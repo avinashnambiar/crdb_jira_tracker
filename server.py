@@ -30,18 +30,24 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
         else:
             super().do_GET()
 
+    def do_POST(self):
+        if self.path.startswith('/proxy?'):
+            self.handle_proxy(method='POST')
+        else:
+            self.send_error(405, 'POST only supported for /proxy')
+
     def do_OPTIONS(self):
         """Handle CORS preflight requests for custom headers like X-Jira-Auth."""
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'X-Jira-Auth, X-Twiki-Auth, Content-Type')
         self.send_header('Access-Control-Max-Age', '86400')
         self.send_header('Content-Length', '0')
         self.end_headers()
 
-    def handle_proxy(self):
-        """Proxy a request to an external URL (for CRDB page fetching)."""
+    def handle_proxy(self, method='GET'):
+        """Proxy a request to an external URL (for CRDB page fetching / TWiki save)."""
         from urllib.parse import urlparse, parse_qs
         params = parse_qs(urlparse(self.path).query)
         target_url = params.get('url', [None])[0]
@@ -50,7 +56,13 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(400, 'Missing url parameter')
             return
 
-        print(f'[proxy] Fetching: {target_url}')
+        # Read POST body if applicable
+        post_body = None
+        if method == 'POST':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_body = self.rfile.read(content_length) if content_length > 0 else b''
+
+        print(f'[proxy] {method} {target_url}')
 
         # Only allow proxying to approved AMD domains for security
         parsed = urlparse(target_url)
@@ -109,12 +121,31 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
                         # CRDB uses Kerberos SSO
                         curl_cmd.extend(['--negotiate', '-u', ':'])
 
+                # Add POST data if this is a POST request
+                if method == 'POST' and post_body is not None:
+                    curl_cmd.extend(['-X', 'POST'])
+                    # Write body to a temp file to avoid command-line length limits
+                    import tempfile
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.txt', mode='wb')
+                    tmp.write(post_body)
+                    tmp.close()
+                    curl_cmd.extend(['-d', f'@{tmp.name}'])
+                    content_type_header = self.headers.get('Content-Type', 'application/x-www-form-urlencoded')
+                    curl_cmd.extend(['-H', f'Content-Type: {content_type_header}'])
+
                 curl_cmd.append(target_url)
 
                 result = subprocess.run(
                     curl_cmd,
-                    capture_output=True, timeout=20
+                    capture_output=True, timeout=30
                 )
+
+                # Clean up temp file if created
+                if method == 'POST' and post_body is not None:
+                    try:
+                        os.unlink(tmp.name)
+                    except Exception:
+                        pass
                 output = result.stdout
                 stderr = result.stderr.decode('utf-8', errors='replace').strip()
                 if stderr:

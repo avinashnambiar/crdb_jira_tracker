@@ -37,6 +37,29 @@
       --border: #404060;
       --radius: 8px;
       --shadow: 0 2px 8px rgba(0,0,0,0.3);
+      --text-on-accent: #111;
+      --text-on-danger: #fff;
+    }
+
+    /* ===== Light Theme ===== */
+    [data-theme="light"] {
+      --bg-primary: #f0f0f5;
+      --bg-secondary: #ffffff;
+      --bg-card: #f8f8fc;
+      --bg-hover: #e8e8f0;
+      --text-primary: #1a1a2e;
+      --text-secondary: #4a4a6a;
+      --text-muted: #8a8aa0;
+      --accent: #0288d1;
+      --accent-hover: #0277bd;
+      --success: #2e7d32;
+      --warning: #e65100;
+      --danger: #c62828;
+      --border: #c8c8d8;
+      --radius: 8px;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --text-on-accent: #fff;
+      --text-on-danger: #fff;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -78,6 +101,28 @@
     .subtitle {
       font-size: 12px;
       color: var(--text-muted);
+    }
+
+    .theme-toggle {
+      margin-left: auto;
+      align-self: center;
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 18px;
+      transition: all 0.25s;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+    .theme-toggle:hover {
+      background: var(--border);
+      transform: rotate(25deg);
     }
 
     /* ===== Notification Banner ===== */
@@ -171,11 +216,11 @@
       transition: all 0.2s;
     }
 
-    .btn-primary { background: var(--accent); color: #111; }
+    .btn-primary { background: var(--accent); color: var(--text-on-accent); }
     .btn-primary:hover { background: var(--accent-hover); }
     .btn-secondary { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border); }
     .btn-secondary:hover { background: var(--border); }
-    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger { background: var(--danger); color: var(--text-on-danger); }
     .btn-danger:hover { opacity: 0.85; }
     .btn-small { padding: 5px 12px; font-size: 12px; background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border); }
     .btn-small:hover { background: var(--border); }
@@ -183,8 +228,8 @@
     .last-refresh-text { font-size: 12px; color: var(--text-secondary); }
     .refresh-progress { padding: 8px 12px; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); background: var(--bg-hover); border-radius: 8px; }
     .refresh-progress .refresh-result { margin-top: 4px; }
-    .refresh-result-updated { color: #66bb6a; }
-    .refresh-result-error { color: #ef5350; }
+    .refresh-result-updated { color: var(--success); }
+    .refresh-result-error { color: var(--danger); }
     .refresh-result-same { color: var(--text-secondary); }
     .btn-refreshing { opacity: 0.6; pointer-events: none; }
     .week-quick-picks { display: flex; gap: 6px; margin-top: 6px; }
@@ -361,12 +406,12 @@
 
     .sig-table .col-name {
       font-weight: 600;
-      color: #e0e0e0;
+      color: var(--text-primary);
       word-break: break-all;
     }
 
     .sig-table .col-name a {
-      color: #e0e0e0;
+      color: var(--text-primary);
       text-decoration: none;
     }
     .sig-table .col-name a:hover {
@@ -402,6 +447,19 @@
     .sig-table .col-actions {
       white-space: nowrap;
       text-align: center;
+    }
+
+    /* Jira Tracker table – more spacious layout */
+    .sig-table.jira-table {
+      border-spacing: 0 4px;
+      font-size: 14px;
+    }
+    .sig-table.jira-table thead th {
+      padding: 10px 14px;
+      font-size: 12px;
+    }
+    .sig-table.jira-table td {
+      padding: 10px 14px;
     }
 
     .sig-action-btn {
@@ -513,6 +571,22 @@
     .search-status-open { color: #ffd54f; }
     .search-status-impl { color: #66bb6a; }
     .search-status-rejected { color: #ef5350; }
+
+    /* ===== Light Theme — Badge & Status Overrides ===== */
+    [data-theme="light"] .badge-no-bug { background: rgba(198,40,40,0.1); color: #c62828; }
+    [data-theme="light"] .badge-cf { background: rgba(123,31,162,0.1); color: #7b1fa2; }
+    [data-theme="light"] .sig-table tbody tr.carried-forward { border-left-color: #7b1fa2; }
+    [data-theme="light"] .badge-bug-open { background: rgba(123,31,162,0.1); color: #7b1fa2; }
+    [data-theme="light"] .badge-bug-open a { color: #7b1fa2 !important; }
+    [data-theme="light"] .badge-bug-impl { background: rgba(46,125,50,0.1); color: #2e7d32; }
+    [data-theme="light"] .badge-bug-impl a { color: #2e7d32 !important; }
+    [data-theme="light"] .badge-bug-rejected { background: rgba(198,40,40,0.1); color: #c62828; }
+    [data-theme="light"] .badge-bug-rejected a { color: #c62828 !important; }
+    [data-theme="light"] .search-status-open { color: #e65100; }
+    [data-theme="light"] .search-status-impl { color: #2e7d32; }
+    [data-theme="light"] .search-status-rejected { color: #c62828; }
+    [data-theme="light"] .bookmarklet-target { background: linear-gradient(135deg, #0288d1, #0277bd); }
+
     .search-no-results {
       text-align: center;
       padding: 30px 20px;
@@ -634,7 +708,7 @@
       gap: 8px;
       padding: 12px 24px;
       background: linear-gradient(135deg, #4fc3f7, #29b6f6);
-      color: #111;
+      color: var(--text-on-accent);
       font-size: 15px;
       font-weight: 700;
       border-radius: var(--radius);
@@ -671,7 +745,7 @@
       height: 28px;
       border-radius: 50%;
       background: var(--accent);
-      color: #111;
+      color: var(--text-on-accent);
       font-weight: 700;
       font-size: 14px;
       margin-bottom: 8px;
@@ -708,6 +782,7 @@
     <div class="header">
       <h1>CRDB Status Tracker</h1>
       <span class="subtitle">Track signatures &amp; generate reports</span>
+      <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle light/dark theme">&#9790;</button>
     </div>
 
     <!-- Notification Banner (for bookmarklet additions) -->
@@ -715,10 +790,10 @@
 
     <!-- File:// mode warning -->
     <div id="file-mode-banner" class="hidden" style="background:rgba(255,167,38,0.12);border:1px solid rgba(255,167,38,0.3);border-radius:8px;padding:16px 20px;margin:12px 0;">
-      <div style="font-weight:600;color:#ffa726;margin-bottom:6px;">&#9888; Server not running</div>
-      <div style="font-size:13px;color:#a0a0c0;line-height:1.5;">
+      <div style="font-weight:600;color:var(--warning);margin-bottom:6px;">&#9888; Server not running</div>
+      <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;">
         Double-click <strong>start-server.bat</strong> in this folder to start the server, then this page will auto-redirect.<br>
-        Or open <a href="http://localhost:8091" style="color:#4fc3f7;">http://localhost:8091</a> after starting it.
+        Or open <a href="http://localhost:8091" style="color:var(--accent);">http://localhost:8091</a> after starting it.
       </div>
     </div>
 
@@ -838,7 +913,8 @@
           <option value="resolved">Resolved / Closed</option>
         </select>
         <span id="jira-count" class="sig-count">0 tracked</span>
-        <button class="btn btn-small" onclick="refreshAllJiraTickets()" style="margin-left:auto" title="Re-fetch all ticket details from Jira">&#x1f504; Refresh All</button>
+        <button class="btn btn-small" onclick="exportJiraToXls()" style="margin-left:auto" title="Export Jira tracker data as XLS">&#128196; Export XLS</button>
+        <button class="btn btn-small" onclick="refreshAllJiraTickets()" style="margin-left:12px" title="Re-fetch all ticket details from Jira">&#x1f504; Refresh All</button>
       </div>
 
       <!-- Tracked Jira Tickets -->
@@ -904,14 +980,16 @@
 
       <button id="btn-generate" class="btn btn-primary btn-full">Generate Report</button>
 
-      <div id="report-output-container" class="hidden">
+      <div id="report-output-container" class="hidden" style="margin-top:16px;">
         <div class="report-header-row">
           <h3>Generated Report</h3>
           <button id="btn-copy" class="btn btn-small">Copy</button>
+          <button id="btn-publish-twiki" class="btn btn-small" style="margin-left:8px;background:var(--success);color:var(--text-on-accent);" title="Publish report to TWiki page">&#9654; Publish to TWiki</button>
         </div>
         <div id="twiki-link" class="twiki-link hidden"></div>
         <textarea id="report-output" readonly rows="14"></textarea>
         <div id="copy-status" class="copy-status hidden">Copied to clipboard!</div>
+        <div id="publish-status" class="copy-status hidden"></div>
       </div>
     </div>
 
@@ -1123,6 +1201,29 @@
 
     const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
+    // ===== Theme Toggle =====
+    const STORAGE_THEME = 'crdb-tracker-theme';
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      const btn = document.getElementById('theme-toggle-btn');
+      if (btn) {
+        // Sun (☀) for light mode, Moon (☾) for dark mode
+        btn.innerHTML = theme === 'light' ? '&#9728;' : '&#9790;';
+        btn.title = theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+      }
+    }
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      localStorage.setItem(STORAGE_THEME, next);
+    }
+    // Apply saved theme immediately (before DOM fully loads)
+    (function() {
+      const saved = localStorage.getItem(STORAGE_THEME) || 'dark';
+      document.documentElement.setAttribute('data-theme', saved);
+    })();
+
     // ===== Globals =====
     let signatures = [];
     let settings = {};
@@ -1136,6 +1237,9 @@
 
     // ===== Init =====
     document.addEventListener('DOMContentLoaded', () => {
+      // Apply theme from localStorage (update button icon)
+      applyTheme(localStorage.getItem(STORAGE_THEME) || 'dark');
+
       loadData();
 
       // If opened as popup by bookmarklet, show minimal save UI and auto-close
@@ -1199,7 +1303,7 @@
 
       // Render minimal popup UI
       document.body.innerHTML = '';
-      document.body.style.cssText = 'background:#1e1e2e;color:#e0e0f0;font-family:Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;';
+      document.body.style.cssText = 'background:var(--bg-primary);color:var(--text-primary);font-family:Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;';
       const box = document.createElement('div');
       box.style.cssText = 'text-align:center;padding:30px;';
       document.body.appendChild(box);
@@ -1208,17 +1312,17 @@
         // Jira ticket bookmarklet save
         const jiraKey = params.get('jirakey') || '';
         if (!jiraKey) {
-          box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#10060;</div><div style="font-size:14px;color:#ef5350;">No Jira ticket found</div>';
+          box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#10060;</div><div style="font-size:14px;color:var(--danger);">No Jira ticket found</div>';
           setTimeout(() => { try { window.close(); } catch(e){} }, 1500);
           return;
         }
         if (jiraTickets.some(t => t.key === jiraKey.toUpperCase())) {
-          box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#9888;&#65039;</div><div style="font-size:14px;color:#ffa726;">Already tracked</div><div style="font-size:12px;color:#a0a0c0;margin-top:6px;">' + escapeHtml(jiraKey) + '</div>';
+          box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#9888;&#65039;</div><div style="font-size:14px;color:var(--warning);">Already tracked</div><div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">' + escapeHtml(jiraKey) + '</div>';
           setTimeout(() => { try { window.close(); } catch(e){} }, 1800);
           return;
         }
         addJiraTicketFromBookmarklet(jiraKey);
-        box.innerHTML = '<div style="font-size:32px;margin-bottom:8px;">&#9989;</div><div style="font-size:15px;font-weight:600;color:#66bb6a;">Jira Tracked!</div><div style="font-size:12px;color:#a0a0c0;margin-top:6px;">' + escapeHtml(jiraKey) + '</div>';
+        box.innerHTML = '<div style="font-size:32px;margin-bottom:8px;">&#9989;</div><div style="font-size:15px;font-weight:600;color:var(--success);">Jira Tracked!</div><div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">' + escapeHtml(jiraKey) + '</div>';
         setTimeout(() => { try { window.close(); } catch(e){} }, 1500);
         return;
       }
@@ -1230,14 +1334,14 @@
       const project = params.get('project') || '';
 
       if (!url && !name) {
-        box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#10060;</div><div style="font-size:14px;color:#ef5350;">No data to save</div>';
+        box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#10060;</div><div style="font-size:14px;color:var(--danger);">No data to save</div>';
         setTimeout(() => { try { window.close(); } catch(e){} }, 1500);
         return;
       }
 
       // Check for duplicate
       if (url && signatures.some(s => s.url === url)) {
-        box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#9888;&#65039;</div><div style="font-size:14px;color:#ffa726;">Already tracked</div><div style="font-size:12px;color:#a0a0c0;margin-top:6px;max-width:280px;word-break:break-all;">' + escapeHtml(name) + '</div>';
+        box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#9888;&#65039;</div><div style="font-size:14px;color:var(--warning);">Already tracked</div><div style="font-size:12px;color:var(--text-secondary);margin-top:6px;max-width:280px;word-break:break-all;">' + escapeHtml(name) + '</div>';
         setTimeout(() => { try { window.close(); } catch(e){} }, 1800);
         return;
       }
@@ -1267,8 +1371,8 @@
         syncCrdbBugsToJiraTracker();
       }
 
-      const bugLine = cleanedBug ? '<div style="font-size:12px;color:#66bb6a;margin-top:4px;">Bug: ' + escapeHtml(cleanedBug) + '</div>' : '';
-      box.innerHTML = '<div style="font-size:32px;margin-bottom:8px;">&#9989;</div><div style="font-size:15px;font-weight:600;color:#66bb6a;">Tracked!</div><div style="font-size:12px;color:#a0a0c0;margin-top:6px;max-width:280px;word-break:break-all;">' + escapeHtml(name) + '</div>' + bugLine;
+      const bugLine = cleanedBug ? '<div style="font-size:12px;color:var(--success);margin-top:4px;">Bug: ' + escapeHtml(cleanedBug) + '</div>' : '';
+      box.innerHTML = '<div style="font-size:32px;margin-bottom:8px;">&#9989;</div><div style="font-size:15px;font-weight:600;color:var(--success);">Tracked!</div><div style="font-size:12px;color:var(--text-secondary);margin-top:6px;max-width:280px;word-break:break-all;">' + escapeHtml(name) + '</div>' + bugLine;
 
       // Auto-close popup after 1.5 seconds
       setTimeout(() => { try { window.close(); } catch(e){} }, 1500);
@@ -1466,8 +1570,15 @@
           document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
           btn.classList.add('active');
           document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+          localStorage.setItem('crdb-tracker-active-tab', btn.dataset.tab);
         });
       });
+      // Restore last active tab
+      const savedTab = localStorage.getItem('crdb-tracker-active-tab');
+      if (savedTab) {
+        const btn = document.querySelector(`.tab-btn[data-tab="${savedTab}"]`);
+        if (btn) btn.click();
+      }
     }
 
     // ===== Event Listeners =====
@@ -1479,6 +1590,7 @@
       // Report Tab
       document.getElementById('btn-generate').addEventListener('click', generateReport);
       document.getElementById('btn-copy').addEventListener('click', copyReport);
+      document.getElementById('btn-publish-twiki').addEventListener('click', publishToTWiki);
 
       // Search Tab
       document.getElementById('btn-search-twiki').addEventListener('click', searchTWiki);
@@ -2119,7 +2231,7 @@
       const pageItems = filtered.slice(startIdx, startIdx + JIRA_PAGE_SIZE);
 
       const jiraBase = 'https://amd.atlassian.net/browse/';
-      let html = `<table class="sig-table" style="font-size:14px;">
+      let html = `<table class="sig-table jira-table">
         <thead><tr>
           <th>#</th>
           <th>Ticket</th>
@@ -2142,13 +2254,13 @@
         const commentText = t.lastComment ? escapeHtml(t.lastComment.substring(0, 100)) + (t.lastComment.length > 100 ? '…' : '') : '<span style="color:var(--text-muted)">—</span>';
 
         return `<tr class="${rowCls}" data-jira-id="${t.id}">
-          <td style="color:var(--text-muted);text-align:center;width:30px">${globalIdx + 1}</td>
+          <td style="color:var(--text-muted);text-align:center">${globalIdx + 1}</td>
           <td style="white-space:nowrap"><a href="${jiraBase}${escapeHtml(t.key)}" target="_blank" class="badge ${statusCls}" style="text-decoration:none">${escapeHtml(t.key)}</a></td>
-          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(t.summary || '')}">${t.summary ? escapeHtml(t.summary) : summaryText}</td>
-          <td style="white-space:nowrap">${escapeHtml(t.assignee || '—')}</td>
+          <td>${t.summary ? escapeHtml(t.summary) : summaryText}</td>
+          <td>${escapeHtml(t.assignee || '—')}</td>
           <td><span class="badge ${statusCls}">${escapeHtml(t.status || 'Unknown')}</span></td>
           <td style="white-space:nowrap;color:var(--text-muted)">${updatedStr}</td>
-          <td style="max-width:250px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(t.lastComment || '')}">${commentText}</td>
+          <td style="color:var(--text-secondary)">${commentText}</td>
           <td class="col-actions">
             <button class="sig-action-btn" onclick="window.open('${jiraBase}${escapeHtml(t.key)}','_blank')" title="Open in Jira">&#128279;</button>
             <button class="sig-action-btn delete" onclick="deleteJiraTicket('${t.id}')" title="Remove">&#10005;</button>
@@ -2163,7 +2275,7 @@
         html += `<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;">`;
         html += `<button class="btn btn-small" onclick="jiraGoToPage(${jiraCurrentPage - 1})" ${jiraCurrentPage <= 1 ? 'disabled' : ''} style="min-width:28px;padding:3px 8px;font-size:13px;">&laquo; Prev</button>`;
         for (let p = 1; p <= totalPages; p++) {
-          const active = p === jiraCurrentPage ? 'background:var(--accent);color:#fff;' : '';
+          const active = p === jiraCurrentPage ? 'background:var(--accent);color:var(--text-on-accent);' : '';
           html += `<button class="btn btn-small" onclick="jiraGoToPage(${p})" style="min-width:28px;padding:3px 8px;font-size:13px;${active}">${p}</button>`;
         }
         html += `<button class="btn btn-small" onclick="jiraGoToPage(${jiraCurrentPage + 1})" ${jiraCurrentPage >= totalPages ? 'disabled' : ''} style="min-width:28px;padding:3px 8px;font-size:13px;">Next &raquo;</button>`;
@@ -2455,6 +2567,241 @@
       }
     }
 
+    // ===== Publish Report to TWiki =====
+    async function publishToTWiki() {
+      const reportText = document.getElementById('report-output').value.trim();
+      if (!reportText) {
+        showPublishStatus('No report generated. Generate the report first.', 'error');
+        return;
+      }
+
+      const format = document.getElementById('report-format').value;
+      if (format !== 'twiki') {
+        showPublishStatus('Publish requires TWiki format. Please change the format and regenerate.', 'warning');
+        return;
+      }
+
+      // Get engineer name early for the confirmation dialog
+      const engineerName = document.getElementById('input-engineer-name').value.trim() || settings.fullName || 'Engineer';
+
+      // Get TWiki credentials — reuse from Search tab or prompt
+      let authToken = getTwikiAuth();
+      if (!authToken) {
+        const user = prompt('TWiki Username (Windows username, no AMD\\ prefix):');
+        if (!user) return;
+        const pass = prompt('TWiki Password:');
+        if (!pass) return;
+        document.getElementById('twiki-username').value = user;
+        document.getElementById('twiki-password').value = pass;
+        authToken = getTwikiAuth();
+        if (!authToken) {
+          showPublishStatus('Invalid TWiki credentials.', 'error');
+          return;
+        }
+      }
+
+      // Build the TWiki page URL
+      const reportDayVal = document.getElementById('input-report-date').value;
+      if (!reportDayVal) {
+        showPublishStatus('Please select a report date first.', 'error');
+        return;
+      }
+      const dateStr = reportDayVal.replace(/-/g, '');
+      const baseUrl = settings.twikiBaseUrl || DEFAULT_SETTINGS.twikiBaseUrl;
+      const viewUrl = `${baseUrl}${dateStr}`;
+      const rawUrl = `${viewUrl}?raw=on`;
+      const saveUrl = viewUrl.replace('/bin/view/', '/bin/save/');
+
+      // Confirmation dialog — let the user know exactly what will happen
+      if (!confirm(
+        `Publish report for "${engineerName}" to TWiki?\n\n` +
+        `Page: ${viewUrl}\n\n` +
+        `• Only YOUR section will be updated.\n` +
+        `• Other engineers' sections will NOT be affected.\n` +
+        `• A safety check will verify all sections are preserved.`
+      )) {
+        return;
+      }
+
+      const publishBtn = document.getElementById('btn-publish-twiki');
+      const statusEl = document.getElementById('publish-status');
+      publishBtn.disabled = true;
+      publishBtn.textContent = '⏳ Publishing...';
+      statusEl.classList.add('hidden');
+
+      const MAX_RETRIES = 3;
+
+      try {
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+          if (attempt > 1) {
+            publishBtn.textContent = `⏳ Retry ${attempt}/${MAX_RETRIES}...`;
+          }
+
+          // ── Step 1: Fetch the LATEST raw page (fresh on every attempt) ──
+          const rawResp = await fetch(`/proxy?url=${encodeURIComponent(rawUrl)}`, {
+            headers: { 'X-Twiki-Auth': authToken }
+          });
+
+          if (rawResp.status === 401) {
+            _twikiAuthToken = '';
+            showPublishStatus('Authentication failed. Check your TWiki credentials.', 'error');
+            return;
+          }
+
+          let pageText = '';
+          if (rawResp.ok) {
+            pageText = await rawResp.text();
+            if (pageText.includes('TWikiRegistration') || pageText.includes('Authorization Required')) {
+              _twikiAuthToken = '';
+              showPublishStatus('Authentication failed. Re-enter your TWiki credentials.', 'error');
+              return;
+            }
+          }
+          // 404 → page doesn't exist yet, we'll create it
+
+          // ── Step 2: Catalog every existing section heading ──
+          const allSectionHeadings = pageText.match(/^---\+\+\+\+\s+.+$/gm) || [];
+          const otherSections = allSectionHeadings.filter(h =>
+            h.replace(/^---\+\+\+\+\s+/, '').trim() !== engineerName
+          );
+
+          // ── Step 3: Surgically replace ONLY this engineer's section ──
+          const headingRegex = new RegExp(
+            '^---\\+\\+\\+\\+\\s+' + engineerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$',
+            'm'
+          );
+
+          let newPageText;
+          const match = pageText.match(headingRegex);
+          if (match) {
+            // Found existing section — replace from heading to next ---++++ or EOF
+            const startIdx = match.index;
+            const afterHeading = pageText.substring(startIdx + match[0].length);
+            const nextHeadingMatch = afterHeading.match(/^---\+\+\+\+\s/m);
+
+            if (nextHeadingMatch) {
+              const endIdx = startIdx + match[0].length + nextHeadingMatch.index;
+              newPageText = pageText.substring(0, startIdx) + reportText + '\n\n' + pageText.substring(endIdx);
+            } else {
+              newPageText = pageText.substring(0, startIdx) + reportText + '\n';
+            }
+          } else {
+            // No existing section — append to end
+            newPageText = pageText ? (pageText.trimEnd() + '\n\n' + reportText + '\n') : (reportText + '\n');
+          }
+
+          // ── Step 4: Safety check — every other section must still be present ──
+          const newSectionHeadings = newPageText.match(/^---\+\+\+\+\s+.+$/gm) || [];
+          const missingSections = otherSections.filter(h => !newSectionHeadings.includes(h));
+          if (missingSections.length > 0) {
+            showPublishStatus(
+              `Safety abort: section(s) would be removed: ${missingSections.map(h => h.replace(/^---\+\+\+\+\s+/, '')).join(', ')}. No changes saved.`,
+              'error'
+            );
+            return;
+          }
+
+          // ── Step 5: POST to TWiki save endpoint ──
+          const formData = new URLSearchParams();
+          formData.append('text', newPageText);
+
+          const saveResp = await fetch(`/proxy?url=${encodeURIComponent(saveUrl)}`, {
+            method: 'POST',
+            headers: {
+              'X-Twiki-Auth': authToken,
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: formData.toString()
+          });
+
+          if (saveResp.status === 401) {
+            _twikiAuthToken = '';
+            showPublishStatus('Authentication failed. Check your TWiki credentials.', 'error');
+            return;
+          }
+
+          if (!saveResp.ok) {
+            if (attempt < MAX_RETRIES) {
+              await new Promise(r => setTimeout(r, 1000 * attempt)); // exponential backoff
+              continue;
+            }
+            const errText = await saveResp.text();
+            showPublishStatus(`Publish failed (HTTP ${saveResp.status}). ${errText.substring(0, 120)}`, 'error');
+            return;
+          }
+
+          // ── Step 6: Post-save verification — re-fetch & confirm integrity ──
+          publishBtn.textContent = '⏳ Verifying...';
+          await new Promise(r => setTimeout(r, 1500)); // let TWiki commit
+
+          const verifyResp = await fetch(`/proxy?url=${encodeURIComponent(rawUrl)}`, {
+            headers: { 'X-Twiki-Auth': authToken }
+          });
+
+          if (verifyResp.ok) {
+            const verifyText = await verifyResp.text();
+            const verifyHeadings = verifyText.match(/^---\+\+\+\+\s+.+$/gm) || [];
+
+            // Is our section present?
+            const ourSectionPresent = verifyHeadings.some(h =>
+              h.replace(/^---\+\+\+\+\s+/, '').trim() === engineerName
+            );
+
+            // Are all other sections still intact?
+            const missingAfterSave = otherSections.filter(h => !verifyHeadings.includes(h));
+
+            if (!ourSectionPresent && attempt < MAX_RETRIES) {
+              // Our section vanished — someone else may have saved simultaneously. Retry.
+              await new Promise(r => setTimeout(r, 1000 * attempt));
+              continue;
+            }
+
+            if (missingAfterSave.length > 0) {
+              // Conflict detected — another user's section disappeared
+              if (attempt < MAX_RETRIES) {
+                await new Promise(r => setTimeout(r, 1000 * attempt));
+                continue; // retry with fresh content
+              }
+              showPublishStatus(
+                `⚠ Published, but section(s) may be affected: ${missingAfterSave.map(h => h.replace(/^---\+\+\+\+\s+/, '')).join(', ')}. Check the TWiki page manually.`,
+                'warning'
+              );
+              return;
+            }
+
+            if (!ourSectionPresent) {
+              showPublishStatus('⚠ Save returned OK but your section was not found. Check the TWiki page manually.', 'warning');
+              return;
+            }
+
+            // All good — our section is present and all other sections intact
+            const action = match ? 'updated' : 'added';
+            showPublishStatus(`✓ Published to TWiki — section ${action}. ${verifyHeadings.length} total section(s) verified intact.`, 'success');
+            return;
+          } else {
+            // Couldn't verify, but save succeeded
+            showPublishStatus('✓ Published to TWiki (verification skipped — save was successful).', 'success');
+            return;
+          }
+        }
+      } catch (err) {
+        showPublishStatus(`Publish error: ${err.message}`, 'error');
+      } finally {
+        publishBtn.disabled = false;
+        publishBtn.innerHTML = '&#9654; Publish to TWiki';
+      }
+    }
+
+    function showPublishStatus(message, type) {
+      const statusEl = document.getElementById('publish-status');
+      statusEl.textContent = message;
+      statusEl.style.color = type === 'success' ? 'var(--success)' : type === 'error' ? 'var(--danger)' : 'var(--warning)';
+      statusEl.classList.remove('hidden');
+      if (type === 'success') {
+        setTimeout(() => statusEl.classList.add('hidden'), 8000);
+      }
+    }
+
     // ===== Settings =====
     function populateSettings() {
       document.getElementById('setting-full-name').value = settings.fullName || '';
@@ -2490,6 +2837,95 @@
     }
 
     // ===== CSV History Log =====
+    function exportJiraToXls() {
+      if (jiraTickets.length === 0) {
+        showStatus('No Jira tickets to export.', 'warning');
+        return;
+      }
+
+      const jiraBase = 'https://amd.atlassian.net/browse/';
+      const xmlEsc = (val) => {
+        if (!val) return '';
+        return String(val).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      };
+
+      // Sort tickets by last updated descending
+      const sorted = [...jiraTickets].sort((a, b) => {
+        const da = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+        const db = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+        return db - da;
+      });
+
+      // Build Excel XML Spreadsheet
+      let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+      xml += '<?mso-application progid="Excel.Sheet"?>\n';
+      xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"';
+      xml += ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n';
+
+      // Styles
+      xml += '<Styles>\n';
+      xml += '  <Style ss:ID="hdr"><Font ss:Bold="1" ss:Size="11"/>';
+      xml += '<Interior ss:Color="#4472C4" ss:Pattern="Solid"/>';
+      xml += '<Font ss:Bold="1" ss:Size="11" ss:Color="#FFFFFF"/></Style>\n';
+      xml += '  <Style ss:ID="def"><Font ss:Size="10"/></Style>\n';
+      xml += '  <Style ss:ID="link"><Font ss:Size="10" ss:Color="#0563C1" ss:Underline="Single"/></Style>\n';
+      xml += '  <Style ss:ID="wrap"><Font ss:Size="10"/><Alignment ss:WrapText="1" ss:Vertical="Top"/></Style>\n';
+      xml += '</Styles>\n';
+
+      xml += '<Worksheet ss:Name="Jira Tracker">\n';
+      xml += '<Table>\n';
+
+      // Column widths
+      xml += '<Column ss:Width="40"/>';   // #
+      xml += '<Column ss:Width="140"/>';  // Ticket
+      xml += '<Column ss:Width="350"/>';  // Summary
+      xml += '<Column ss:Width="120"/>';  // Assignee
+      xml += '<Column ss:Width="110"/>';  // Status
+      xml += '<Column ss:Width="140"/>';  // Last Updated
+      xml += '<Column ss:Width="300"/>';  // Last Comment
+      xml += '<Column ss:Width="200"/>';  // URL
+      xml += '\n';
+
+      // Header row
+      xml += '<Row ss:StyleID="hdr">';
+      ['#', 'Ticket', 'Summary', 'Assignee', 'Status', 'Last Updated', 'Last Comment', 'URL'].forEach(h => {
+        xml += `<Cell><Data ss:Type="String">${xmlEsc(h)}</Data></Cell>`;
+      });
+      xml += '</Row>\n';
+
+      // Data rows
+      sorted.forEach((t, idx) => {
+        const updatedStr = t.lastUpdated ? new Date(t.lastUpdated).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+        const comment = t.lastComment || '';
+        const url = jiraBase + (t.key || '');
+
+        xml += '<Row ss:StyleID="def">';
+        xml += `<Cell><Data ss:Type="Number">${idx + 1}</Data></Cell>`;
+        xml += `<Cell><Data ss:Type="String">${xmlEsc(t.key || '')}</Data></Cell>`;
+        xml += `<Cell ss:StyleID="wrap"><Data ss:Type="String">${xmlEsc(t.summary || '')}</Data></Cell>`;
+        xml += `<Cell><Data ss:Type="String">${xmlEsc(t.assignee || '')}</Data></Cell>`;
+        xml += `<Cell><Data ss:Type="String">${xmlEsc(t.status || 'Unknown')}</Data></Cell>`;
+        xml += `<Cell><Data ss:Type="String">${xmlEsc(updatedStr)}</Data></Cell>`;
+        xml += `<Cell ss:StyleID="wrap"><Data ss:Type="String">${xmlEsc(comment)}</Data></Cell>`;
+        xml += `<Cell ss:StyleID="link"><Data ss:Type="String">${xmlEsc(url)}</Data></Cell>`;
+        xml += '</Row>\n';
+      });
+
+      xml += '</Table>\n</Worksheet>\n</Workbook>';
+
+      // Download
+      const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'jira-tracker-' + new Date().toISOString().slice(0, 10) + '.xls';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showStatus('Jira tracker exported to XLS.', 'success');
+    }
+
     function downloadCSVLog() {
       if (signatures.length === 0) {
         showStatus('No signatures to export.', 'warning');
