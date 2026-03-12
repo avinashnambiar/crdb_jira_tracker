@@ -1,0 +1,3385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRDB Status Tracker</title>
+  <script>
+    // If opened via file://, try to redirect to local server
+    if (location.protocol === 'file:') {
+      var serverUrl = 'http://localhost:8091/crdbtracker.html';
+      // Try to reach the server, redirect if alive
+      fetch(serverUrl, { mode: 'no-cors' }).then(function() {
+        location.replace(serverUrl);
+      }).catch(function() {
+        // Server not running — show inline message (handled below in body)
+        document.addEventListener('DOMContentLoaded', function() {
+          document.getElementById('file-mode-banner').classList.remove('hidden');
+        });
+      });
+    }
+  </script>
+  <style>
+    /* ===== Base Reset & Variables ===== */
+    :root {
+      --bg-primary: #1e1e2e;
+      --bg-secondary: #2a2a3e;
+      --bg-card: #313148;
+      --bg-hover: #3a3a54;
+      --text-primary: #e0e0f0;
+      --text-secondary: #a0a0c0;
+      --text-muted: #707090;
+      --accent: #4fc3f7;
+      --accent-hover: #29b6f6;
+      --success: #66bb6a;
+      --warning: #ffa726;
+      --danger: #ef5350;
+      --border: #404060;
+      --radius: 8px;
+      --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      min-height: 100vh;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-primary); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* ===== Layout ===== */
+    .container {
+      max-width: 95vw;
+      margin: 0 auto;
+      padding: 0 24px 40px;
+    }
+
+    .header {
+      padding: 24px 0 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ===== Notification Banner ===== */
+    .notification-banner {
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      margin: 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: slideDown 0.3s ease;
+    }
+
+    .notification-banner.success {
+      background: rgba(102,187,106,0.15);
+      color: var(--success);
+      border: 1px solid rgba(102,187,106,0.3);
+    }
+
+    .notification-banner.error {
+      background: rgba(239,83,80,0.15);
+      color: var(--danger);
+      border: 1px solid rgba(239,83,80,0.3);
+    }
+
+    .notification-banner.warning {
+      background: rgba(255,167,38,0.15);
+      color: var(--warning);
+      border: 1px solid rgba(255,167,38,0.3);
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===== Tabs ===== */
+    .tab-bar {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-secondary);
+      border-radius: var(--radius) var(--radius) 0 0;
+      margin-top: 16px;
+      overflow: hidden;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 12px 0;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content {
+      display: none;
+      padding: 18px 4px;
+    }
+
+    .tab-content.active { display: block; }
+
+    /* ===== Buttons ===== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary { background: var(--accent); color: #111; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: 0.85; }
+    .btn-small { padding: 5px 12px; font-size: 12px; background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border); }
+    .btn-small:hover { background: var(--border); }
+    .refresh-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-hover); border-radius: 8px; margin-bottom: 10px; }
+    .last-refresh-text { font-size: 12px; color: var(--text-secondary); }
+    .refresh-progress { padding: 8px 12px; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); background: var(--bg-hover); border-radius: 8px; }
+    .refresh-progress .refresh-result { margin-top: 4px; }
+    .refresh-result-updated { color: #66bb6a; }
+    .refresh-result-error { color: #ef5350; }
+    .refresh-result-same { color: var(--text-secondary); }
+    .btn-refreshing { opacity: 0.6; pointer-events: none; }
+    .week-quick-picks { display: flex; gap: 6px; margin-top: 6px; }
+    .week-quick-picks .btn-small { flex: 1; text-align: center; padding: 4px 8px; font-size: 11px; }
+    .btn-full { width: 100%; }
+    .icon { font-size: 16px; font-weight: 700; }
+
+    /* ===== Forms ===== */
+    .form-group { margin-bottom: 12px; }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .checkbox-group { margin-bottom: 10px; }
+    .checkbox-group label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .checkbox-group input[type="checkbox"] { accent-color: var(--accent); }
+
+    select {
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    .form-row { display: flex; gap: 12px; }
+    .form-half { flex: 1; }
+
+    /* ===== Action Row ===== */
+    .action-row { margin-bottom: 12px; }
+
+    /* ===== Manual Add ===== */
+    .manual-add-section { margin-bottom: 14px; }
+
+    .manual-add-section details {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-secondary);
+    }
+
+    .manual-add-section summary {
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-secondary);
+      user-select: none;
+    }
+
+    .manual-add-section summary:hover { color: var(--text-primary); }
+
+    .manual-add-section details[open] > summary {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+
+    .manual-add-section details > div,
+    .manual-add-section details > button {
+      margin: 0 14px 12px;
+    }
+
+    /* ===== Status Message ===== */
+    .status-msg {
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 12px;
+      transition: opacity 0.3s;
+    }
+
+    .status-msg.success { background: rgba(102,187,106,0.15); color: var(--success); border: 1px solid rgba(102,187,106,0.3); }
+    .status-msg.error { background: rgba(239,83,80,0.15); color: var(--danger); border: 1px solid rgba(239,83,80,0.3); }
+    .status-msg.warning { background: rgba(255,167,38,0.15); color: var(--warning); border: 1px solid rgba(255,167,38,0.3); }
+
+    .hidden { display: none !important; }
+
+    /* ===== Filter Row ===== */
+    .filter-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .sig-count { font-size: 12px; color: var(--text-muted); }
+
+    /* ===== Signature Table ===== */
+    .sig-list { }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state .hint { font-size: 12px; margin-top: 8px; }
+
+    .sig-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 12px;
+    }
+
+    .sig-table thead th {
+      position: sticky;
+      top: 0;
+      background: var(--bg-secondary);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 2px solid var(--border);
+      white-space: nowrap;
+      z-index: 1;
+    }
+
+    .sig-table tbody tr {
+      background: var(--bg-card);
+      transition: background 0.15s;
+    }
+
+    .sig-table tbody tr:hover { background: var(--bg-hover); }
+
+    .sig-table tbody tr.just-added {
+      background: rgba(102,187,106,0.08);
+    }
+
+    .sig-table tbody tr.carried-forward {
+      border-left: 3px solid #b388ff;
+    }
+
+    .sig-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      color: var(--text-primary);
+    }
+
+    .sig-table .col-name {
+      font-weight: 600;
+      color: #e0e0e0;
+      word-break: break-all;
+    }
+
+    .sig-table .col-name a {
+      color: #e0e0e0;
+      text-decoration: none;
+    }
+    .sig-table .col-name a:hover {
+      color: var(--accent);
+      text-decoration: underline;
+    }
+
+    .sig-table .sig-table-input {
+      width: 100%;
+      padding: 4px 6px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-size: 12px;
+      box-sizing: border-box;
+    }
+
+    .sig-table .sig-table-input:focus { outline: none; border-color: var(--accent); }
+
+    .sig-table .sig-table-select {
+      padding: 4px 4px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .sig-table .sig-table-select:focus { outline: none; border-color: var(--accent); }
+
+    .sig-table .col-actions {
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    .sig-action-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .sig-action-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+    .sig-action-btn.delete:hover { color: var(--danger); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .badge-bug { background: rgba(102,187,106,0.2); color: var(--success); }
+    .badge-bug a { color: var(--success); }
+    .badge-no-bug { background: rgba(239,154,154,0.18); color: #ef9a9a; }
+    .badge-resolved { background: rgba(79,195,247,0.2); color: var(--accent); }
+    .badge-cf { background: rgba(171,130,255,0.2); color: #b388ff; }
+
+    /* ===== Report Tab ===== */
+    .report-options { margin-bottom: 16px; }
+
+    .report-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .report-header-row h3 { font-size: 14px; color: var(--text-primary); }
+
+    #report-output {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      resize: vertical;
+    }
+
+    .copy-status {
+      text-align: center;
+      padding: 6px;
+      font-size: 12px;
+      color: var(--success);
+      margin-top: 6px;
+    }
+
+    .twiki-link { margin-bottom: 10px; font-size: 12px; }
+    .twiki-link a { color: var(--accent); text-decoration: none; }
+    .twiki-link a:hover { text-decoration: underline; }
+
+    /* ===== Search Tab ===== */
+    .search-result-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .search-result-card:hover { border-color: var(--accent); }
+    .search-result-page {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .search-result-page a { color: var(--accent); text-decoration: none; }
+    .search-result-page a:hover { text-decoration: underline; }
+    .search-result-sig {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      word-break: break-all;
+    }
+    .search-result-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .search-result-meta a { color: var(--accent); text-decoration: none; }
+    .search-result-meta a:hover { text-decoration: underline; }
+    .badge-bug-open { background: rgba(206,147,216,0.18); color: #ce93d8; }
+    .badge-bug-open a { color: #ce93d8 !important; }
+    .badge-bug-impl { background: rgba(102,187,106,0.2); color: #66bb6a; }
+    .badge-bug-impl a { color: #66bb6a !important; }
+    .badge-bug-rejected { background: rgba(239,83,80,0.18); color: #ef5350; }
+    .badge-bug-rejected a { color: #ef5350 !important; }
+    .badge-bug-default { background: rgba(79,195,247,0.18); color: var(--accent); }
+    .badge-bug-default a { color: var(--accent) !important; }
+    .search-status { font-weight: 600; }
+    .search-status-open { color: #ffd54f; }
+    .search-status-impl { color: #66bb6a; }
+    .search-status-rejected { color: #ef5350; }
+    .search-no-results {
+      text-align: center;
+      padding: 30px 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .search-summary {
+      padding: 8px 12px;
+      background: var(--bg-hover);
+      border-radius: var(--radius);
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    /* ===== Settings Tab ===== */
+    .danger-zone { margin-top: 12px; }
+    .danger-zone h4 { font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; }
+    .danger-zone .btn-small { margin-right: 8px; margin-bottom: 8px; }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+    /* ===== Date Picker & Bandwidth ===== */
+    .date-picker-row { display: flex; gap: 8px; align-items: center; }
+
+    .date-add-input {
+      flex: 1;
+      padding: 7px 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    .date-add-input::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
+
+    .selected-dates-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .date-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .date-chip-remove {
+      cursor: pointer;
+      color: var(--danger);
+      font-size: 14px;
+      line-height: 1;
+      font-weight: bold;
+      border: none;
+      background: none;
+      padding: 0 2px;
+    }
+
+    .date-chip-remove:hover { color: #ff8a80; }
+
+    .hint-label { font-size: 11px; color: var(--text-muted); font-weight: normal; }
+    .bandwidth-display { font-size: 22px; font-weight: bold; color: var(--accent); padding: 4px 0; }
+    .bandwidth-calc-hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ===== Setup Tab ===== */
+    .setup-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .setup-section h3 {
+      font-size: 15px;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    .setup-section p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+
+    .setup-section ol, .setup-section ul {
+      margin-left: 20px;
+      margin-bottom: 12px;
+    }
+
+    .setup-section li {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      line-height: 1.5;
+    }
+
+    .setup-section code {
+      background: var(--bg-secondary);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+      color: var(--accent);
+    }
+
+    .bookmarklet-target {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #4fc3f7, #29b6f6);
+      color: #111;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: var(--radius);
+      text-decoration: none;
+      cursor: grab;
+      box-shadow: var(--shadow);
+      transition: transform 0.15s;
+      margin: 12px 0;
+    }
+
+    .bookmarklet-target:hover { transform: scale(1.04); }
+    .bookmarklet-target:active { cursor: grabbing; }
+
+    .how-it-works {
+      display: flex;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .how-step {
+      flex: 1;
+      text-align: center;
+      padding: 16px 10px;
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .how-step .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #111;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .how-step .step-text {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    .warning-box {
+      background: rgba(255,167,38,0.1);
+      border: 1px solid rgba(255,167,38,0.25);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 12px;
+      color: var(--warning);
+      margin-top: 12px;
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 600px) {
+      .how-it-works { flex-direction: column; }
+      .form-row { flex-direction: column; gap: 0; }
+      .container { padding: 0 8px 30px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Header -->
+    <div class="header">
+      <h1>CRDB Status Tracker</h1>
+      <span class="subtitle">Track signatures &amp; generate reports</span>
+    </div>
+
+    <!-- Notification Banner (for bookmarklet additions) -->
+    <div id="notification-banner" class="hidden"></div>
+
+    <!-- File:// mode warning -->
+    <div id="file-mode-banner" class="hidden" style="background:rgba(255,167,38,0.12);border:1px solid rgba(255,167,38,0.3);border-radius:8px;padding:16px 20px;margin:12px 0;">
+      <div style="font-weight:600;color:#ffa726;margin-bottom:6px;">&#9888; Server not running</div>
+      <div style="font-size:13px;color:#a0a0c0;line-height:1.5;">
+        Double-click <strong>start-server.bat</strong> in this folder to start the server, then this page will auto-redirect.<br>
+        Or open <a href="http://localhost:8091" style="color:#4fc3f7;">http://localhost:8091</a> after starting it.
+      </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="tracker">CRDB Tracker</button>
+      <button class="tab-btn" data-tab="jira">JIRA Tracker</button>
+      <button class="tab-btn" data-tab="report">Report</button>
+      <button class="tab-btn" data-tab="search">Search</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+      <button class="tab-btn" data-tab="setup">Setup</button>
+    </div>
+
+    <!-- ==================== TRACKER TAB ==================== -->
+    <div class="tab-content active" id="tab-tracker">
+
+      <!-- Manual Add -->
+      <div class="manual-add-section">
+        <details>
+          <summary>&#43; Add signature manually</summary>
+          <div class="form-group">
+            <label>CRDB Link</label>
+            <input type="text" id="input-crdb-link" placeholder="https://crdb3.amd.com/projects/pt.a/simulations/..." />
+          </div>
+          <div class="form-group">
+            <label>Signature Name</label>
+            <input type="text" id="input-sig-name" placeholder="e.g. ibs_uc_op_nonma_baadcode" />
+          </div>
+          <div class="form-group">
+            <label>Jira Bug ID (optional)</label>
+            <input type="text" id="input-bug-no" placeholder="e.g. DEPTRTVF-31950" />
+          </div>
+          <div class="form-group">
+            <label>Status Note</label>
+            <input type="text" id="input-status-note" placeholder="e.g. Known issue, same signature" />
+          </div>
+          <div class="form-row">
+            <div class="form-group form-half">
+              <label>Bug Type</label>
+              <select id="input-bug-type">
+                <option value="RTL">RTL</option>
+                <option value="Verif">Verif</option>
+              </select>
+            </div>
+            <div class="form-group form-half">
+              <label>Debug Status</label>
+              <select id="input-debug-status">
+                <option value="debugged">Debugged</option>
+                <option value="in-progress">In Progress</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Notes (optional)</label>
+            <input type="text" id="input-notes" placeholder="Brief description" />
+          </div>
+          <button id="btn-add-manual" class="btn btn-secondary btn-full">Add Signature</button>
+        </details>
+      </div>
+
+      <!-- Status Message -->
+      <div id="status-msg" class="status-msg hidden"></div>
+
+      <!-- Refresh Bar -->
+      <div class="refresh-bar">
+        <span id="last-refresh-time" class="last-refresh-text">Never refreshed</span>
+        <button id="btn-refresh-sigs" class="btn btn-small" onclick="refreshSignatures()" title="Re-check all CRDB pages for bug updates">&#x1f504; Refresh Bug Data</button>
+      </div>
+      <div id="refresh-progress" class="refresh-progress hidden"></div>
+
+      <!-- Filter -->
+      <div class="filter-row">
+        <select id="filter-week" onchange="renderSignatureList()" title="Filter by week">
+          <option value="all">All Weeks</option>
+        </select>
+        <select id="filter-status">
+          <option value="all">All Signatures</option>
+          <option value="no-bug">No Bug Assigned</option>
+          <option value="has-bug">Bug Assigned</option>
+          <option value="resolved">Resolved</option>
+        </select>
+        <span id="sig-count" class="sig-count">0 tracked</span>
+      </div>
+
+      <!-- Tracked Signatures List -->
+      <div id="sig-list" class="sig-list">
+        <div class="empty-state">
+          <p>No signatures tracked yet.</p>
+          <p class="hint">Go to the <strong>Setup</strong> tab to install the bookmarklet, then click it on any CRDB page to start tracking.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== JIRA TRACKER TAB ==================== -->
+    <div class="tab-content" id="tab-jira">
+
+      <!-- Manual Add -->
+      <div class="manual-add-section">
+        <details>
+          <summary>&#43; Add Jira ticket manually</summary>
+          <div class="form-group">
+            <label>Jira URL or Ticket ID</label>
+            <input type="text" id="input-jira-url" placeholder="https://amd.atlassian.net/browse/DEPTRTVF-31950 or DEPTRTVF-31950" />
+          </div>
+          <button id="btn-add-jira" class="btn btn-secondary btn-full" onclick="addJiraTicketManual()">Add Ticket</button>
+        </details>
+      </div>
+
+      <!-- Status Message -->
+      <div id="jira-status-msg" class="status-msg hidden"></div>
+
+      <!-- Filter -->
+      <div class="filter-row">
+        <select id="jira-filter-status" onchange="renderJiraList()">
+          <option value="all">All Tickets</option>
+          <option value="open">Open</option>
+          <option value="resolved">Resolved / Closed</option>
+        </select>
+        <span id="jira-count" class="sig-count">0 tracked</span>
+        <button class="btn btn-small" onclick="refreshAllJiraTickets()" style="margin-left:auto" title="Re-fetch all ticket details from Jira">&#x1f504; Refresh All</button>
+      </div>
+
+      <!-- Tracked Jira Tickets -->
+      <div id="jira-list" class="sig-list">
+        <div class="empty-state">
+          <p>No Jira tickets tracked yet.</p>
+          <p class="hint">Click the bookmarklet on any Jira ticket page, or add one manually above.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== REPORT TAB ==================== -->
+    <div class="tab-content" id="tab-report">
+      <div class="report-options">
+        <div class="form-group">
+          <label>Full Name (as shown on TWiki)</label>
+          <input type="text" id="input-engineer-name" placeholder="e.g. Avinash, K V" />
+        </div>
+        <div class="form-group">
+          <label id="report-week-label">Report Week (Monday)</label>
+          <input type="date" id="input-report-date" />
+          <div class="week-quick-picks">
+            <button class="btn btn-small" onclick="shiftReportWeek(-1)">◀ Prev Week</button>
+            <button class="btn btn-small" onclick="setDefaultReportDate()">This Week</button>
+            <button class="btn btn-small" onclick="shiftReportWeek(1)">Next Week ▶</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-half">
+            <label>Allocated Bandwidth (%)</label>
+            <input type="number" id="input-alloc-bandwidth" placeholder="e.g. 50" min="0" max="100" value="100" />
+          </div>
+          <div class="form-group form-half">
+            <label>Report Format</label>
+            <select id="report-format">
+              <option value="twiki" selected>TWiki (Status Page)</option>
+              <option value="plain">Plain Text</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Out of Office <span class="hint-label">(past dates only — days you were absent)</span></label>
+          <div class="date-picker-row">
+            <input type="date" id="ooo-date-input" class="date-add-input" />
+            <button id="btn-add-ooo-date" class="btn btn-small" type="button">Add</button>
+          </div>
+          <div id="ooo-dates-list" class="selected-dates-list"></div>
+        </div>
+        <div class="form-group">
+          <label>Upcoming Vacations <span class="hint-label">(future dates only)</span></label>
+          <div class="date-picker-row">
+            <input type="date" id="vacation-date-input" class="date-add-input" />
+            <button id="btn-add-vacation-date" class="btn btn-small" type="button">Add</button>
+          </div>
+          <div id="vacation-dates-list" class="selected-dates-list"></div>
+        </div>
+        <div class="form-group">
+          <label>Effective Debug Bandwidth</label>
+          <div id="effective-bandwidth" class="bandwidth-display">100%</div>
+          <div class="bandwidth-calc-hint" id="bandwidth-calc-hint">100% allocated &times; 5/5 workdays = 100%</div>
+        </div>
+      </div>
+
+      <button id="btn-generate" class="btn btn-primary btn-full">Generate Report</button>
+
+      <div id="report-output-container" class="hidden">
+        <div class="report-header-row">
+          <h3>Generated Report</h3>
+          <button id="btn-copy" class="btn btn-small">Copy</button>
+        </div>
+        <div id="twiki-link" class="twiki-link hidden"></div>
+        <textarea id="report-output" readonly rows="14"></textarea>
+        <div id="copy-status" class="copy-status hidden">Copied to clipboard!</div>
+      </div>
+    </div>
+
+    <!-- ==================== SEARCH TAB ==================== -->
+    <div class="tab-content" id="tab-search">
+      <div class="search-section">
+        <h3 style="font-size:15px;color:var(--accent);margin-bottom:12px;">&#128269; Search TWiki Pages</h3>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Search for a signature across the last TWiki report pages. Returns all CRDB links and associated bug IDs.</p>
+
+        <!-- TWiki Credentials (Basic auth required) -->
+        <div id="twiki-cred-section">
+          <div class="form-row">
+            <div class="form-group form-half">
+              <label>TWiki Username <span class="hint-label">(Windows username, no AMD\ prefix)</span></label>
+              <input type="text" id="twiki-username" placeholder="e.g. avinaskv" />
+            </div>
+            <div class="form-group form-half">
+              <label>TWiki Password</label>
+              <input type="password" id="twiki-password" placeholder="Windows password" />
+            </div>
+          </div>
+          <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">&#128274; Credentials are kept in memory only (never saved to disk). Cleared on page reload.</p>
+        </div>
+
+        <div class="form-group">
+          <label>Signature Name</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="search-sig-input" placeholder="e.g. my_failing_signature" style="flex:1;" />
+            <button id="btn-search-twiki" class="btn btn-primary">Search</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Number of pages to search</label>
+          <select id="search-page-count">
+            <option value="5">Last 5 pages</option>
+            <option value="10" selected>Last 10 pages</option>
+            <option value="15">Last 15 pages</option>
+            <option value="20">Last 20 pages</option>
+          </select>
+        </div>
+        <div id="search-progress" class="refresh-progress hidden"></div>
+        <div id="search-results"></div>
+      </div>
+    </div>
+
+    <!-- ==================== SETTINGS TAB ==================== -->
+    <div class="tab-content" id="tab-settings">
+      <div class="form-group">
+        <label>Full Name (for TWiki heading)</label>
+        <input type="text" id="setting-full-name" placeholder="e.g. Avinash, K V" />
+      </div>
+      <div class="form-group">
+        <label>Alias / Username</label>
+        <input type="text" id="setting-eng-name" placeholder="e.g. avinaskv" />
+      </div>
+      <div class="form-group">
+        <label>TWiki Base URL</label>
+        <input type="text" id="setting-twiki-url" value="https://twiki.amd.com/twiki/bin/view/MGDVerif/MGDCoreDebugIdcDetailedStatus" />
+      </div>
+      <div class="form-group">
+        <label>Report Day (day reports are collected)</label>
+        <select id="setting-report-day">
+          <option value="0">Sunday</option>
+          <option value="1" selected>Monday</option>
+          <option value="2">Tuesday</option>
+          <option value="3">Wednesday</option>
+          <option value="4">Thursday</option>
+          <option value="5">Friday</option>
+          <option value="6">Saturday</option>
+        </select>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Week runs from the day after the previous report day through the report day. E.g. Monday → Tue–Mon.</p>
+      </div>
+      <hr />
+      <h4 style="margin-top:8px;">Jira Integration</h4>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Required for auto-fetching bug status. Generate a token at <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" style="color:var(--accent);">Atlassian API Tokens</a>.</p>
+      <div class="form-group">
+        <label>Jira Email (Atlassian account email)</label>
+        <input type="email" id="setting-jira-email" placeholder="e.g. your.name@amd.com" />
+      </div>
+      <div class="form-group">
+        <label>Jira API Token</label>
+        <input type="password" id="setting-jira-token" placeholder="Paste your API token here" />
+      </div>
+
+      <button id="btn-save-settings" class="btn btn-secondary btn-full">Save Settings</button>
+      <div id="settings-status" class="status-msg hidden"></div>
+
+      <hr />
+      <div class="danger-zone">
+        <h4>Data Management</h4>
+        <button id="btn-export" class="btn btn-small">Export Data (JSON)</button>
+        <button id="btn-import" class="btn btn-small">Import Data</button>
+        <input type="file" id="file-import" class="hidden" accept=".json" />
+        <button class="btn btn-small" onclick="downloadCSVLog()">&#128196; Download History (CSV)</button>
+        <button id="btn-clear-all" class="btn btn-danger btn-small">Clear All Data</button>
+      </div>
+    </div>
+
+    <!-- ==================== SETUP TAB ==================== -->
+    <div class="tab-content" id="tab-setup">
+
+      <div class="setup-section">
+        <h3>&#128204; One-Click Bookmarklet Setup</h3>
+        <p>Drag the button below to your <strong>bookmarks bar</strong> (one-time setup). Then click it on any <strong>CRDB page</strong> or <strong>Jira ticket page</strong> to instantly track it.</p>
+
+        <a id="bookmarklet-link" class="bookmarklet-target" href="#" title="Drag me to your bookmarks bar!">
+          &#128205; Track
+        </a>
+
+        <p style="font-size:11px;color:var(--text-muted);">
+          If your bookmarks bar is hidden, press <code>Ctrl+Shift+B</code> to show it.
+        </p>
+
+        <div class="how-it-works">
+          <div class="how-step">
+            <div class="step-num">1</div>
+            <div class="step-text">Open any <strong>CRDB simulation page</strong> or <strong>Jira ticket page</strong> (amd.atlassian.net/browse/...)</div>
+          </div>
+          <div class="how-step">
+            <div class="step-num">2</div>
+            <div class="step-text">Click <strong>"Track"</strong> in your bookmarks bar</div>
+          </div>
+          <div class="how-step">
+            <div class="step-num">3</div>
+            <div class="step-text">A small popup saves it and auto-closes — CRDB pages go to <strong>CRDB Tracker</strong>, Jira pages go to <strong>JIRA Tracker</strong></div>
+          </div>
+        </div>
+
+        <div class="warning-box">
+          <strong>Note:</strong> The bookmarklet is linked to this file's location. If you move this file, come back to this tab to re-drag the updated bookmarklet.
+        </div>
+      </div>
+
+      <div class="setup-section">
+        <h3>&#128196; How It Works</h3>
+        <p>This is a <strong>zero-install</strong> standalone app. No browser extension needed.</p>
+        <ul>
+          <li>All data is stored in your browser's <strong>localStorage</strong> — nothing leaves your machine.</li>
+          <li>The bookmarklet detects whether you're on a CRDB page or Jira page, extracts the relevant info, saves it via a tiny popup that auto-closes, and routes it to the correct tracker tab.</li>
+          <li>You can export/import your data as JSON from the <strong>Settings</strong> tab.</li>
+        </ul>
+      </div>
+
+      <div class="setup-section">
+        <h3>&#128272; Jira API Token Setup (for auto bug status)</h3>
+        <p>To automatically fetch and color-code Jira bug statuses, you need to create an <strong>Atlassian API Token</strong> and add it in Settings.</p>
+        <div class="how-it-works">
+          <div class="how-step">
+            <div class="step-num">1</div>
+            <div class="step-text">Go to <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" style="color:var(--accent);text-decoration:underline;">Atlassian API Tokens</a> and log in with your AMD Atlassian account</div>
+          </div>
+          <div class="how-step">
+            <div class="step-num">2</div>
+            <div class="step-text">Click <strong>"Create API token"</strong>, give it a label (e.g. <em>CRDB Tracker</em>), and copy the generated token</div>
+          </div>
+          <div class="how-step">
+            <div class="step-num">3</div>
+            <div class="step-text">Open the <strong>Settings</strong> tab in this app and scroll to <strong>Jira Integration</strong></div>
+          </div>
+          <div class="how-step">
+            <div class="step-num">4</div>
+            <div class="step-text">Enter your <strong>Atlassian email</strong> (e.g. <code>your.name@amd.com</code>) and paste the <strong>API token</strong></div>
+          </div>
+          <div class="how-step">
+            <div class="step-num">5</div>
+            <div class="step-text">Click <strong>Save Settings</strong> — bug statuses will auto-fetch and show as colored badges</div>
+          </div>
+        </div>
+        <div class="warning-box">
+          <strong>Security note:</strong> Your API token is stored only in your browser's localStorage — it never leaves your machine except when sent to Jira's API via the local proxy server.
+        </div>
+      </div>
+
+      <div class="setup-section">
+        <h3>&#9889; Optional: Run with Local Server</h3>
+        <p>For the most reliable experience (especially if localStorage acts up on <code>file://</code>), run a simple server:</p>
+        <ol>
+          <li>Open a terminal in this folder</li>
+          <li>Run: <code>python -m http.server 8080</code></li>
+          <li>Open <code>http://localhost:8080</code> in your browser</li>
+          <li>Re-drag the bookmarklet from the Setup tab (it auto-updates the URL)</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ============================================================
+    // CRDB Status Tracker — Standalone App with Bookmarklet
+    // ============================================================
+
+    // ===== Constants =====
+    const STORAGE_SIGS = 'crdb-tracker-signatures';
+    const STORAGE_SETTINGS = 'crdb-tracker-settings';
+    const STORAGE_OOO = 'crdb-tracker-ooo-dates';
+    const STORAGE_VACATION = 'crdb-tracker-vacation-dates';
+    const STORAGE_LAST_REFRESH = 'crdb-tracker-last-refresh';
+    const STORAGE_JIRA_TICKETS = 'crdb-tracker-jira-tickets';
+    const REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+    const DEFAULT_SETTINGS = {
+      fullName: 'Avinash, K V',
+      engineerName: '',
+      twikiBaseUrl: 'https://twiki.amd.com/twiki/bin/view/MGDVerif/MGDCoreDebugIdcDetailedStatus',
+      reportDay: 1, // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+      allocatedBandwidth: 100
+    };
+
+    const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+    // ===== Globals =====
+    let signatures = [];
+    let settings = {};
+    let oooDates = [];
+    let vacationDates = [];
+    let justAddedId = null; // ID of most recently bookmarklet-added sig
+    let jiraTickets = [];
+    let justAddedJiraId = null;
+    let jiraCurrentPage = 1;
+    const JIRA_PAGE_SIZE = 15;
+
+    // ===== Init =====
+    document.addEventListener('DOMContentLoaded', () => {
+      loadData();
+
+      // If opened as popup by bookmarklet, show minimal save UI and auto-close
+      if (isPopupMode()) {
+        handlePopupSave();
+        return; // Don't init the full app
+      }
+
+      setupTabs();
+      setupEventListeners();
+      setupBookmarklet();
+
+      // Handle incoming bookmarklet data (fallback for non-popup)
+      handleIncomingBookmarklet();
+
+      renderSignatureList();
+      renderJiraList();
+      populateSettings();
+      setDefaultReportDate();
+      renderDateChips('ooo');
+      renderDateChips('vacation');
+      recalcEffectiveBandwidth();
+      updateLastRefreshDisplay();
+
+      // Auto-refresh if last refresh was >12 hours ago
+      scheduleAutoRefresh();
+
+      // Refresh data when user switches back to this tab (picks up popup saves)
+      // Invalidate Jira caches on focus so we get fresh data
+      window.addEventListener('focus', () => {
+        invalidateJiraCaches();
+        loadData();
+        renderSignatureList();
+        renderJiraList();
+        renderDateChips('ooo');
+        renderDateChips('vacation');
+        recalcEffectiveBandwidth();
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          invalidateJiraCaches();
+          loadData();
+          renderSignatureList();
+          renderJiraList();
+          renderDateChips('ooo');
+          renderDateChips('vacation');
+          recalcEffectiveBandwidth();
+        }
+      });
+    });
+
+    function isPopupMode() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('add') === '1' && params.get('popup') === '1';
+    }
+
+    // ===== Popup Mode: minimal save + auto-close =====
+    function handlePopupSave() {
+      const params = new URLSearchParams(window.location.search);
+      const source = params.get('source') || 'crdb';
+
+      // Render minimal popup UI
+      document.body.innerHTML = '';
+      document.body.style.cssText = 'background:#1e1e2e;color:#e0e0f0;font-family:Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;';
+      const box = document.createElement('div');
+      box.style.cssText = 'text-align:center;padding:30px;';
+      document.body.appendChild(box);
+
+      if (source === 'jira') {
+        // Jira ticket bookmarklet save
+        const jiraKey = params.get('jirakey') || '';
+        if (!jiraKey) {
+          box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#10060;</div><div style="font-size:14px;color:#ef5350;">No Jira ticket found</div>';
+          setTimeout(() => { try { window.close(); } catch(e){} }, 1500);
+          return;
+        }
+        if (jiraTickets.some(t => t.key === jiraKey.toUpperCase())) {
+          box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#9888;&#65039;</div><div style="font-size:14px;color:#ffa726;">Already tracked</div><div style="font-size:12px;color:#a0a0c0;margin-top:6px;">' + escapeHtml(jiraKey) + '</div>';
+          setTimeout(() => { try { window.close(); } catch(e){} }, 1800);
+          return;
+        }
+        addJiraTicketFromBookmarklet(jiraKey);
+        box.innerHTML = '<div style="font-size:32px;margin-bottom:8px;">&#9989;</div><div style="font-size:15px;font-weight:600;color:#66bb6a;">Jira Tracked!</div><div style="font-size:12px;color:#a0a0c0;margin-top:6px;">' + escapeHtml(jiraKey) + '</div>';
+        setTimeout(() => { try { window.close(); } catch(e){} }, 1500);
+        return;
+      }
+
+      // CRDB signature bookmarklet save (existing logic)
+      const url = params.get('url') || '';
+      const name = params.get('name') || '';
+      const bug = params.get('bug') || '';
+      const project = params.get('project') || '';
+
+      if (!url && !name) {
+        box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#10060;</div><div style="font-size:14px;color:#ef5350;">No data to save</div>';
+        setTimeout(() => { try { window.close(); } catch(e){} }, 1500);
+        return;
+      }
+
+      // Check for duplicate
+      if (url && signatures.some(s => s.url === url)) {
+        box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#9888;&#65039;</div><div style="font-size:14px;color:#ffa726;">Already tracked</div><div style="font-size:12px;color:#a0a0c0;margin-top:6px;max-width:280px;word-break:break-all;">' + escapeHtml(name) + '</div>';
+        setTimeout(() => { try { window.close(); } catch(e){} }, 1800);
+        return;
+      }
+
+      // Save the entry
+      const cleanedBug = sanitizeBugNo(bug);
+      const entry = {
+        id: generateId(),
+        url: url,
+        name: name || 'Unknown Signature',
+        bugNo: cleanedBug,
+        bugType: 'RTL',
+        statusNote: '',
+        debugStatus: cleanedBug ? 'debugged' : 'in-progress',
+        notes: '',
+        dateAdded: new Date().toISOString(),
+        lastChecked: new Date().toISOString(),
+        status: cleanedBug ? 'has-bug' : 'no-bug',
+        project: project,
+        simId: extractSimId(url)
+      };
+
+      signatures.unshift(entry);
+      saveSignatures();
+      // Auto-add bug to JIRA Tracker if present
+      if (cleanedBug && /^[A-Z][A-Z0-9]+-\d+$/i.test(cleanedBug)) {
+        syncCrdbBugsToJiraTracker();
+      }
+
+      const bugLine = cleanedBug ? '<div style="font-size:12px;color:#66bb6a;margin-top:4px;">Bug: ' + escapeHtml(cleanedBug) + '</div>' : '';
+      box.innerHTML = '<div style="font-size:32px;margin-bottom:8px;">&#9989;</div><div style="font-size:15px;font-weight:600;color:#66bb6a;">Tracked!</div><div style="font-size:12px;color:#a0a0c0;margin-top:6px;max-width:280px;word-break:break-all;">' + escapeHtml(name) + '</div>' + bugLine;
+
+      // Auto-close popup after 1.5 seconds
+      setTimeout(() => { try { window.close(); } catch(e){} }, 1500);
+    }
+
+    // ===== Data Layer =====
+    function loadData() {
+      // Load signatures
+      try {
+        const rawSigs = localStorage.getItem(STORAGE_SIGS);
+        signatures = rawSigs ? JSON.parse(rawSigs) : [];
+      } catch (e) {
+        console.error('Error loading signatures:', e);
+        if (!signatures || !signatures.length) signatures = [];
+      }
+
+      // Load settings
+      try {
+        const rawSettings = localStorage.getItem(STORAGE_SETTINGS);
+        settings = rawSettings ? { ...DEFAULT_SETTINGS, ...JSON.parse(rawSettings) } : { ...DEFAULT_SETTINGS };
+      } catch (e) {
+        console.error('Error loading settings:', e);
+        if (!settings || typeof settings !== 'object') settings = { ...DEFAULT_SETTINGS };
+      }
+
+      // Load Jira tickets
+      loadJiraTickets();
+
+      // Auto-sync CRDB bug IDs to JIRA Tracker
+      syncCrdbBugsToJiraTracker();
+
+      // Load persisted OOO and vacation dates
+      try {
+        const rawOoo = localStorage.getItem(STORAGE_OOO);
+        oooDates = rawOoo ? JSON.parse(rawOoo) : [];
+      } catch (e) { oooDates = []; }
+
+      try {
+        const rawVac = localStorage.getItem(STORAGE_VACATION);
+        vacationDates = rawVac ? JSON.parse(rawVac) : [];
+      } catch (e) { vacationDates = []; }
+
+      // Auto-clean: remove OOO/vacation dates older than 3 weeks
+      try {
+        const cleanCutoff = (() => {
+          const curStart = getCurrentWeekStart();
+          const d = new Date(curStart + 'T00:00:00');
+          d.setDate(d.getDate() - 21);
+          return toLocalDateStr(d);
+        })();
+        const beforeCleanV = vacationDates.length;
+        vacationDates = vacationDates.filter(d => d >= cleanCutoff);
+        if (vacationDates.length !== beforeCleanV) saveVacationDates();
+
+        const beforeCleanO = oooDates.length;
+        oooDates = oooDates.filter(d => d >= cleanCutoff);
+        if (oooDates.length !== beforeCleanO) saveOooDates();
+      } catch (e) {
+        console.error('Error during date cleanup:', e);
+      }
+
+      // Migration: add new fields to old entries
+      try {
+        let needsSave = false;
+        signatures.forEach(sig => {
+          if (sig.bugNo) {
+            const cleaned = sanitizeBugNo(sig.bugNo);
+            if (cleaned !== sig.bugNo) { sig.bugNo = cleaned; needsSave = true; }
+          }
+          if (!sig.debugStatus) { sig.debugStatus = sig.bugNo ? 'debugged' : 'in-progress'; needsSave = true; }
+          if (!sig.bugType) { sig.bugType = 'RTL'; needsSave = true; }
+          if (sig.statusNote === undefined) { sig.statusNote = ''; needsSave = true; }
+        });
+        if (needsSave) saveSignatures();
+      } catch (e) {
+        console.error('Error during migration:', e);
+      }
+    }
+
+    function saveSignatures() {
+      try {
+        localStorage.setItem(STORAGE_SIGS, JSON.stringify(signatures));
+      } catch (e) {
+        console.error('Error saving signatures:', e);
+        showStatus('Error saving data. localStorage may be full.', 'error');
+      }
+    }
+
+    function saveSettings() {
+      try {
+        localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(settings));
+      } catch (e) {
+        console.error('Error saving settings:', e);
+      }
+    }
+
+    function saveOooDates() {
+      try { localStorage.setItem(STORAGE_OOO, JSON.stringify(oooDates)); } catch(e) {}
+    }
+
+    function saveVacationDates() {
+      try { localStorage.setItem(STORAGE_VACATION, JSON.stringify(vacationDates)); } catch(e) {}
+    }
+
+    // ===== Handle Incoming Bookmarklet Data =====
+    function handleIncomingBookmarklet() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('add') !== '1') return;
+
+      const source = params.get('source') || 'crdb';
+
+      if (source === 'jira') {
+        const jiraKey = params.get('jirakey') || '';
+        if (!jiraKey) { cleanUrl(); return; }
+        if (jiraTickets.some(t => t.key === jiraKey.toUpperCase())) {
+          showNotification('Jira ticket ' + jiraKey + ' is already tracked.', 'warning');
+          cleanUrl();
+          return;
+        }
+        addJiraTicketFromBookmarklet(jiraKey);
+        showNotification('Jira tracked: ' + jiraKey, 'success');
+        cleanUrl();
+        renderJiraList();
+        // Auto-fetch details
+        const ticket = jiraTickets.find(t => t.key === jiraKey.toUpperCase());
+        if (ticket) fetchJiraTicketDetails(ticket).then(() => { saveJiraTickets(); renderJiraList(); });
+        return;
+      }
+
+      const url = params.get('url') || '';
+      const name = params.get('name') || '';
+      const bug = params.get('bug') || '';
+      const project = params.get('project') || '';
+
+      if (!url && !name) return;
+
+      // Check for duplicate
+      if (url && signatures.some(s => s.url === url)) {
+        showNotification('This CRDB page is already being tracked.', 'warning');
+        // Clean URL
+        cleanUrl();
+        return;
+      }
+
+      const cleanedBug = sanitizeBugNo(bug);
+      const entry = {
+        id: generateId(),
+        url: url,
+        name: name || 'Unknown Signature',
+        bugNo: cleanedBug,
+        bugType: 'RTL',
+        statusNote: '',
+        debugStatus: cleanedBug ? 'debugged' : 'in-progress',
+        notes: '',
+        dateAdded: new Date().toISOString(),
+        lastChecked: new Date().toISOString(),
+        status: cleanedBug ? 'has-bug' : 'no-bug',
+        project: project,
+        simId: extractSimId(url)
+      };
+
+      signatures.unshift(entry);
+      saveSignatures();
+      justAddedId = entry.id;
+
+      const bugInfo = cleanedBug ? ` (Bug: ${cleanedBug})` : '';
+      showNotification(`Tracked: ${entry.name}${bugInfo}`, 'success');
+
+      // Clean URL to prevent re-adding on refresh
+      cleanUrl();
+    }
+
+    function cleanUrl() {
+      const baseUrl = window.location.href.split('?')[0];
+      try {
+        window.history.replaceState({}, document.title, baseUrl);
+      } catch (e) {
+        // file:// might not support replaceState in all browsers
+      }
+    }
+
+    function showNotification(msg, type) {
+      const banner = document.getElementById('notification-banner');
+      banner.className = `notification-banner ${type}`;
+      banner.innerHTML = `<span>${type === 'success' ? '&#10003;' : type === 'warning' ? '&#9888;' : '&#10007;'}</span> ${escapeHtml(msg)}`;
+      banner.classList.remove('hidden');
+      setTimeout(() => banner.classList.add('hidden'), 6000);
+    }
+
+    // ===== Tab Switching =====
+    function setupTabs() {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+        });
+      });
+    }
+
+    // ===== Event Listeners =====
+    function setupEventListeners() {
+      // Tracker Tab
+      document.getElementById('btn-add-manual').addEventListener('click', addManual);
+      document.getElementById('filter-status').addEventListener('change', renderSignatureList);
+
+      // Report Tab
+      document.getElementById('btn-generate').addEventListener('click', generateReport);
+      document.getElementById('btn-copy').addEventListener('click', copyReport);
+
+      // Search Tab
+      document.getElementById('btn-search-twiki').addEventListener('click', searchTWiki);
+      document.getElementById('search-sig-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') searchTWiki();
+      });
+      document.getElementById('twiki-password').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('search-sig-input').focus();
+      });
+      // Clear cached auth token when credentials change
+      document.getElementById('twiki-username').addEventListener('input', () => { _twikiAuthToken = ''; });
+      document.getElementById('twiki-password').addEventListener('input', () => { _twikiAuthToken = ''; });
+
+      // Pre-fill TWiki username from settings
+      if (settings.engineerName) {
+        document.getElementById('twiki-username').value = settings.engineerName;
+      }
+
+      const oooInput = document.getElementById('ooo-date-input');
+      document.getElementById('btn-add-ooo-date').addEventListener('click', () => addDateChip('ooo'));
+      oooInput.addEventListener('change', () => addDateChip('ooo'));
+      oooInput.addEventListener('click', () => { try { oooInput.showPicker(); } catch(e) {} });
+
+      const vacInput = document.getElementById('vacation-date-input');
+      document.getElementById('btn-add-vacation-date').addEventListener('click', () => addDateChip('vacation'));
+      vacInput.addEventListener('change', () => addDateChip('vacation'));
+      vacInput.addEventListener('click', () => { try { vacInput.showPicker(); } catch(e) {} });
+
+      document.getElementById('input-alloc-bandwidth').addEventListener('input', () => {
+        settings.allocatedBandwidth = parseInt(document.getElementById('input-alloc-bandwidth').value) || 100;
+        saveSettings();
+        recalcEffectiveBandwidth();
+      });
+      document.getElementById('input-report-date').addEventListener('change', recalcEffectiveBandwidth);
+
+      document.getElementById('ooo-dates-list').addEventListener('click', handleDateChipRemove);
+      document.getElementById('vacation-dates-list').addEventListener('click', handleDateChipRemove);
+
+      // Settings Tab
+      document.getElementById('btn-save-settings').addEventListener('click', saveSettingsFromUI);
+      document.getElementById('btn-export').addEventListener('click', exportData);
+      document.getElementById('btn-import').addEventListener('click', () => document.getElementById('file-import').click());
+      document.getElementById('file-import').addEventListener('change', importData);
+      document.getElementById('btn-clear-all').addEventListener('click', clearAllData);
+    }
+
+    // ===== Add Manual =====
+    function addManual() {
+      const url = document.getElementById('input-crdb-link').value.trim();
+      const name = document.getElementById('input-sig-name').value.trim();
+      const bugNo = sanitizeBugNo(document.getElementById('input-bug-no').value.trim());
+      const statusNote = document.getElementById('input-status-note').value.trim();
+      const bugType = document.getElementById('input-bug-type').value;
+      const debugStatus = document.getElementById('input-debug-status').value;
+      const notes = document.getElementById('input-notes').value.trim();
+
+      if (!url && !name) {
+        showStatus('Please provide at least a CRDB link or signature name.', 'error');
+        return;
+      }
+
+      if (url && signatures.some(s => s.url === url)) {
+        showStatus('This CRDB link is already tracked.', 'warning');
+        return;
+      }
+
+      const autoDebugStatus = bugNo ? 'debugged' : 'in-progress';
+
+      const entry = {
+        id: generateId(),
+        url: url,
+        name: name || extractSigNameFromUrl(url) || 'Manual Entry',
+        bugNo: bugNo,
+        bugType: bugType,
+        statusNote: statusNote,
+        debugStatus: debugStatus || autoDebugStatus,
+        notes: notes,
+        dateAdded: new Date().toISOString(),
+        lastChecked: new Date().toISOString(),
+        status: bugNo ? 'has-bug' : 'no-bug',
+        project: '',
+        simId: url ? extractSimId(url) : ''
+      };
+
+      signatures.unshift(entry);
+      saveSignatures();
+      renderSignatureList();
+      showStatus(`Added: ${entry.name}`, 'success');
+
+      // Clear form
+      document.getElementById('input-crdb-link').value = '';
+      document.getElementById('input-sig-name').value = '';
+      document.getElementById('input-bug-no').value = '';
+      document.getElementById('input-status-note').value = '';
+      document.getElementById('input-notes').value = '';
+    }
+
+    // ===== Render Signature List =====
+    function populateWeekDropdown() {
+      const dropdown = document.getElementById('filter-week');
+      const prev = dropdown.value;
+      const weeks = new Set();
+      const currentWeek = getCurrentWeekStart();
+      weeks.add(currentWeek);
+      signatures.forEach(sig => {
+        const ws = getWeekStart(sig.dateAdded.slice(0, 10));
+        weeks.add(ws);
+      });
+      const sorted = Array.from(weeks).sort().reverse();
+      dropdown.innerHTML = '<option value="all">All Weeks</option>';
+      sorted.forEach(ws => {
+        const we = getWeekEnd(ws);
+        const startLabel = new Date(ws + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const endLabel = new Date(we + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const isCurrent = ws === currentWeek ? ' (Current)' : '';
+        const opt = document.createElement('option');
+        opt.value = ws;
+        opt.textContent = `${startLabel} – ${endLabel}${isCurrent}`;
+        dropdown.appendChild(opt);
+      });
+      // restore previous selection if still valid
+      if (prev && sorted.includes(prev)) dropdown.value = prev;
+      else dropdown.value = 'all';
+    }
+
+    function renderSignatureList() {
+      populateWeekDropdown();
+      const container = document.getElementById('sig-list');
+      const filter = document.getElementById('filter-status').value;
+      const weekFilter = document.getElementById('filter-week').value;
+
+      let filtered = signatures;
+
+      // Week filter
+      if (weekFilter !== 'all') {
+        const weekEnd = getWeekEnd(weekFilter);
+        filtered = filtered.filter(sig => {
+          const addedDate = sig.dateAdded.slice(0, 10);
+          // Show signatures added in this week OR carried forward into this week
+          const inWeek = addedDate >= weekFilter && addedDate <= weekEnd;
+          const carriedForward = addedDate < weekFilter && sig.debugStatus !== 'debugged';
+          return inWeek || carriedForward;
+        });
+      }
+
+      // Status filter
+      if (filter === 'no-bug') filtered = filtered.filter(s => s.status === 'no-bug');
+      else if (filter === 'has-bug') filtered = filtered.filter(s => s.status === 'has-bug');
+      else if (filter === 'resolved') filtered = filtered.filter(s => s.status === 'resolved');
+
+      document.getElementById('sig-count').textContent = `${filtered.length} of ${signatures.length} tracked`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>${signatures.length === 0 ? 'No signatures tracked yet.' : 'No signatures match this filter.'}</p>
+            <p class="hint">${signatures.length === 0 ? 'Go to the <strong>Setup</strong> tab to install the bookmarklet, then click it on any CRDB page.' : 'Try a different filter.'}</p>
+          </div>`;
+        return;
+      }
+
+      const currentWeekStart = getCurrentWeekStart();
+
+      const jiraBase = 'https://amd.atlassian.net/browse/';
+
+      let html = `<table class="sig-table">
+        <thead><tr>
+          <th>#</th>
+          <th>Signature</th>
+          <th>Bug ID</th>
+          <th>Jira Status</th>
+          <th>Debug</th>
+          <th>Type</th>
+          <th>Status Note</th>
+          <th>Added</th>
+          <th>Actions</th>
+        </tr></thead><tbody>`;
+
+      html += filtered.map((sig, idx) => {
+        const dateStr = new Date(sig.dateAdded).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const debugDone = (sig.debugStatus || 'in-progress') === 'debugged';
+        const debugBadgeClass = debugDone ? 'badge-bug-impl' : 'badge-bug-open';
+        const debugBadgeText = debugDone ? 'Debugged' : 'In Progress';
+        const jiraStatusRaw = sig.jiraStatus || '';
+        const bugStatusCat = classifyJiraStatus(jiraStatusRaw);
+        const bugBadgeClass = bugStatusCat === 'impl' ? 'badge-bug-impl' : bugStatusCat === 'rejected' ? 'badge-bug-rejected' : (jiraStatusRaw ? 'badge-bug-open' : 'badge-bug-default');
+        const hasBugLink = sig.status === 'has-bug' && sig.bugNo && sig.bugNo.includes('-');
+        const jiraStatusCls = bugStatusCat === 'impl' ? 'search-status-impl' : bugStatusCat === 'rejected' ? 'search-status-rejected' : (jiraStatusRaw ? 'search-status-open' : '');
+        const isJustAdded = sig.id === justAddedId;
+        const isCF = isCarriedForward(sig, currentWeekStart);
+        const rowCls = `${isJustAdded ? ' just-added' : ''}${isCF ? ' carried-forward' : ''}`;
+
+        // Bug ID cell — show linked badge or input
+        let bugCell;
+        if (hasBugLink) {
+          bugCell = `<a href="${jiraBase}${escapeHtml(sig.bugNo)}" target="_blank" class="badge ${bugBadgeClass}" style="text-decoration:none">${escapeHtml(sig.bugNo)}</a>`;
+        } else {
+          bugCell = sig.bugNo ? `<span class="badge badge-no-bug">${escapeHtml(sig.bugNo)}</span>` : '';
+        }
+        bugCell += `<input class="sig-table-input" type="text" placeholder="DEPTRTVF-31950" value="${escapeHtml(sig.bugNo || '')}" data-action="update-bug" data-sig-id="${sig.id}" style="margin-top:${sig.bugNo ? '4px' : '0'};" />`;
+
+        // Jira status cell
+        let jiraCell = '';
+        if (jiraStatusRaw) {
+          jiraCell = `<span class="search-status ${jiraStatusCls}" style="font-size:11px">${escapeHtml(jiraStatusRaw)}</span>`;
+        } else if (hasBugLink) {
+          jiraCell = `<span style="color:var(--text-muted);font-size:0.85em" data-jira-status-placeholder="${sig.id}">fetching…</span>`;
+        } else {
+          jiraCell = `<span style="color:var(--text-muted)">—</span>`;
+        }
+
+        // Signature name — link to CRDB if available
+        const nameHtml = sig.url
+          ? `<a href="${escapeHtml(sig.url)}" target="_blank" title="Open CRDB page">${escapeHtml(sig.name)}</a>`
+          : escapeHtml(sig.name);
+        const cfBadge = isCF ? ` <span class="badge badge-cf" style="font-size:10px">CF</span>` : '';
+
+        return `<tr class="${rowCls}" data-id="${sig.id}">
+          <td style="color:var(--text-muted);text-align:center;width:30px">${idx + 1}</td>
+          <td class="col-name">${nameHtml}${cfBadge}</td>
+          <td style="min-width:130px">${bugCell}</td>
+          <td style="min-width:80px">${jiraCell}</td>
+          <td><span class="badge ${debugBadgeClass}">${debugBadgeText}</span>
+            <select class="sig-table-select" data-action="update-debug-status" data-sig-id="${sig.id}" style="margin-top:4px;display:block">
+              <option value="in-progress" ${(sig.debugStatus || 'in-progress') === 'in-progress' ? 'selected' : ''}>In Progress</option>
+              <option value="debugged" ${(sig.debugStatus || 'in-progress') === 'debugged' ? 'selected' : ''}>Debugged</option>
+            </select>
+          </td>
+          <td><select class="sig-table-select" data-action="update-bug-type" data-sig-id="${sig.id}">
+              <option value="RTL" ${(sig.bugType || 'RTL') === 'RTL' ? 'selected' : ''}>RTL</option>
+              <option value="Verif" ${(sig.bugType || 'RTL') === 'Verif' ? 'selected' : ''}>Verif</option>
+            </select>
+          </td>
+          <td style="min-width:140px"><input class="sig-table-input" type="text" placeholder="Status note" value="${escapeHtml(sig.statusNote || '')}" data-action="update-status-note" data-sig-id="${sig.id}" /></td>
+          <td style="white-space:nowrap;color:var(--text-muted)">${dateStr}</td>
+          <td class="col-actions">
+            ${sig.url ? `<button class="sig-action-btn" data-action="open-link" data-sig-id="${sig.id}" title="Open CRDB link">&#128279;</button>` : ''}
+            <button class="sig-action-btn delete" data-action="delete" data-sig-id="${sig.id}" title="Remove">&#10005;</button>
+          </td>
+        </tr>`;
+      }).join('');
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+
+      // Clear the just-added highlight after a few seconds
+      if (justAddedId) {
+        setTimeout(() => {
+          const el = document.querySelector(`tr.just-added`);
+          if (el) el.classList.remove('just-added');
+          justAddedId = null;
+        }, 4000);
+      }
+
+      // Auto-fetch Jira statuses in background
+      refreshJiraStatuses();
+    }
+
+    // ===== Event Delegation for Signature Cards =====
+    document.getElementById('sig-list').addEventListener('click', function(e) {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const id = btn.dataset.sigId;
+
+      if (action === 'open-link') {
+        const sig = signatures.find(s => s.id === id);
+        if (sig && sig.url) window.open(sig.url, '_blank');
+      } else if (action === 'delete') {
+        deleteSig(id);
+      }
+    });
+
+    document.getElementById('sig-list').addEventListener('change', function(e) {
+      const el = e.target.closest('[data-action]');
+      if (!el) return;
+      const action = el.dataset.action;
+      const id = el.dataset.sigId;
+
+      if (action === 'update-bug') updateBug(id, el.value);
+      else if (action === 'update-debug-status') updateDebugStatus(id, el.value);
+      else if (action === 'update-status-note') updateStatusNote(id, el.value);
+      else if (action === 'update-bug-type') updateBugType(id, el.value);
+    });
+
+    // Also listen for blur on text inputs (save on tab-out)
+    document.getElementById('sig-list').addEventListener('blur', function(e) {
+      const el = e.target.closest('[data-action]');
+      if (!el || el.tagName !== 'INPUT') return;
+      const action = el.dataset.action;
+      const id = el.dataset.sigId;
+
+      if (action === 'update-bug') updateBug(id, el.value);
+      else if (action === 'update-status-note') updateStatusNote(id, el.value);
+    }, true);
+
+    // ===== Signature Actions =====
+    function deleteSig(id) {
+      if (!confirm('Remove this signature from tracking?')) return;
+      signatures = signatures.filter(s => s.id !== id);
+      saveSignatures();
+      renderSignatureList();
+    }
+
+    function updateBug(id, value) {
+      const sig = signatures.find(s => s.id === id);
+      if (!sig) return;
+      const cleaned = sanitizeBugNo(value);
+      sig.bugNo = cleaned;
+      sig.status = cleaned ? 'has-bug' : 'no-bug';
+      sig.debugStatus = cleaned ? 'debugged' : 'in-progress';
+      // Clear cached Jira status so it re-fetches
+      sig.jiraStatus = '';
+      sig.jiraStatusAt = 0;
+      saveSignatures();
+      // Auto-add to JIRA Tracker if valid Jira key
+      if (cleaned && /^[A-Z][A-Z0-9]+-\d+$/i.test(cleaned)) {
+        syncCrdbBugsToJiraTracker();
+      }
+      renderSignatureList();
+    }
+
+    function updateDebugStatus(id, value) {
+      const sig = signatures.find(s => s.id === id);
+      if (!sig) return;
+      sig.debugStatus = value;
+      saveSignatures();
+    }
+
+    function updateStatusNote(id, value) {
+      const sig = signatures.find(s => s.id === id);
+      if (!sig) return;
+      sig.statusNote = value.trim();
+      saveSignatures();
+    }
+
+    function updateBugType(id, value) {
+      const sig = signatures.find(s => s.id === id);
+      if (!sig) return;
+      sig.bugType = value;
+      saveSignatures();
+    }
+
+    // ===== Jira Bug Status Auto-Fetch =====
+    // Classify Jira status name into category: 'open', 'impl', 'rejected'
+    function classifyJiraStatus(statusName) {
+      if (!statusName) return '';
+      const sl = statusName.toLowerCase();
+      if (sl.includes('implement') || sl.includes('closed') || sl.includes('resolved') || sl.includes('done') || sl.includes('fixed')) return 'impl';
+      if (sl.includes('reject') || sl.includes("won't fix") || sl.includes('invalid') || sl.includes('duplicate')) return 'rejected';
+      if (sl.includes('open') || sl.includes('new') || sl.includes('in progress') || sl.includes('assigned') || sl.includes('wip') || sl.includes('debug')) return 'open';
+      return 'open'; // default to open for unknown statuses
+    }
+
+    // Fetch bug status from Jira REST API via proxy
+    async function fetchJiraBugStatus(bugId) {
+      const apiUrl = `https://amd.atlassian.net/rest/api/2/issue/${encodeURIComponent(bugId)}?fields=status`;
+      const proxyUrl = `/proxy?url=${encodeURIComponent(apiUrl)}`;
+      try {
+        const headers = {};
+        // Use Jira API token if configured
+        if (settings.jiraEmail && settings.jiraToken) {
+          headers['X-Jira-Auth'] = btoa(`${settings.jiraEmail}:${settings.jiraToken}`);
+        }
+        const resp = await fetch(proxyUrl, { headers });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        if (data && data.fields && data.fields.status && data.fields.status.name) {
+          return data.fields.status.name;
+        }
+      } catch (e) {
+        console.warn(`[Jira] Failed to fetch status for ${bugId}:`, e);
+      }
+      return null;
+    }
+
+    // Invalidate all Jira caches so next render triggers fresh API calls
+    function invalidateJiraCaches() {
+      signatures.forEach(s => { s.jiraStatusAt = 0; });
+      jiraTickets.forEach(t => { t.fetchedAt = 0; });
+    }
+
+    // Auto-fetch Jira status for all signatures with a bug ID
+    // Caches result in sig.jiraStatus and sig.jiraStatusAt (timestamp)
+    const JIRA_STATUS_CACHE_MS = 5 * 60 * 1000; // 5 minute cache
+    async function refreshJiraStatuses() {
+      const now = Date.now();
+      const sigsToFetch = signatures.filter(s =>
+        s.bugNo && s.bugNo.includes('-') &&
+        (!s.jiraStatusAt || (now - s.jiraStatusAt) > JIRA_STATUS_CACHE_MS)
+      );
+      if (sigsToFetch.length === 0) return;
+
+      // Fetch in parallel (max 5 at a time)
+      const batchSize = 5;
+      let changed = false;
+      for (let i = 0; i < sigsToFetch.length; i += batchSize) {
+        const batch = sigsToFetch.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+          batch.map(s => fetchJiraBugStatus(s.bugNo).then(status => ({ sig: s, status })))
+        );
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value.status) {
+            r.value.sig.jiraStatus = r.value.status;
+            r.value.sig.jiraStatusAt = now;
+            changed = true;
+            // Update placeholder in DOM immediately
+            const ph = document.querySelector(`[data-jira-status-placeholder="${r.value.sig.id}"]`);
+            if (ph) {
+              const cat = classifyJiraStatus(r.value.status);
+              const cls = cat === 'impl' ? 'search-status-impl' : cat === 'rejected' ? 'search-status-rejected' : 'search-status-open';
+              ph.className = `search-status ${cls}`;
+              ph.textContent = r.value.status;
+              ph.removeAttribute('data-jira-status-placeholder');
+              // Also update the badge color
+              const row = ph.closest('tr[data-id]');
+              if (row) {
+                const badge = row.querySelector('.badge-bug-default, .badge-bug-open, .badge-bug-impl, .badge-bug-rejected');
+                if (badge) {
+                  badge.classList.remove('badge-bug-default', 'badge-bug-open', 'badge-bug-impl', 'badge-bug-rejected');
+                  badge.classList.add(cat === 'impl' ? 'badge-bug-impl' : cat === 'rejected' ? 'badge-bug-rejected' : 'badge-bug-open');
+                }
+              }
+            }
+          }
+        }
+      }
+      if (changed) {
+        saveSignatures();
+      }
+    }
+
+    // ===== JIRA Tracker Functions =====
+    function loadJiraTickets() {
+      try {
+        const raw = localStorage.getItem(STORAGE_JIRA_TICKETS);
+        jiraTickets = raw ? JSON.parse(raw) : [];
+      } catch (e) { jiraTickets = []; }
+    }
+
+    function saveJiraTickets() {
+      localStorage.setItem(STORAGE_JIRA_TICKETS, JSON.stringify(jiraTickets));
+    }
+
+    function extractJiraKey(input) {
+      if (!input) return '';
+      input = input.trim();
+      // Match ticket ID from URL or plain text
+      const m = input.match(/([A-Z][A-Z0-9]+-\d+)/i);
+      return m ? m[1].toUpperCase() : '';
+    }
+
+    function addJiraTicketManual() {
+      const inp = document.getElementById('input-jira-url');
+      const key = extractJiraKey(inp.value);
+      if (!key) {
+        showJiraMsg('Enter a valid Jira URL or ticket ID (e.g. DEPTRTVF-31950)', 'error');
+        return;
+      }
+      if (jiraTickets.some(t => t.key === key)) {
+        showJiraMsg('Ticket ' + key + ' is already tracked.', 'warning');
+        return;
+      }
+      const ticket = {
+        id: generateId(),
+        key: key,
+        summary: '',
+        assignee: '',
+        status: '',
+        lastUpdated: '',
+        lastComment: '',
+        dateAdded: new Date().toISOString(),
+        fetchedAt: 0
+      };
+      jiraTickets.unshift(ticket);
+      saveJiraTickets();
+      justAddedJiraId = ticket.id;
+      inp.value = '';
+      showJiraMsg('Added ' + key + ' — fetching details…', 'success');
+      renderJiraList();
+      fetchJiraTicketDetails(ticket).then(() => {
+        saveJiraTickets();
+        renderJiraList();
+      });
+    }
+
+    function addJiraTicketFromBookmarklet(key) {
+      if (!key) return false;
+      key = key.toUpperCase();
+      if (jiraTickets.some(t => t.key === key)) return false; // duplicate
+      const ticket = {
+        id: generateId(),
+        key: key,
+        summary: '',
+        assignee: '',
+        status: '',
+        lastUpdated: '',
+        lastComment: '',
+        dateAdded: new Date().toISOString(),
+        fetchedAt: 0
+      };
+      jiraTickets.unshift(ticket);
+      saveJiraTickets();
+      justAddedJiraId = ticket.id;
+      return true;
+    }
+
+    // Auto-populate JIRA Tracker from CRDB Tracker bug IDs
+    function syncCrdbBugsToJiraTracker() {
+      let added = 0;
+      signatures.forEach(sig => {
+        if (!sig.bugNo) return;
+        const key = sig.bugNo.toUpperCase();
+        // Only sync valid Jira keys (PROJ-123 format)
+        if (!/^[A-Z][A-Z0-9]+-\d+$/.test(key)) return;
+        if (jiraTickets.some(t => t.key === key)) return; // already tracked
+        const ticket = {
+          id: generateId(),
+          key: key,
+          summary: '',
+          assignee: '',
+          status: '',
+          lastUpdated: '',
+          lastComment: '',
+          dateAdded: new Date().toISOString(),
+          fetchedAt: 0
+        };
+        jiraTickets.push(ticket);
+        added++;
+      });
+      if (added > 0) {
+        saveJiraTickets();
+        renderJiraList();
+      }
+      return added;
+    }
+
+    function showJiraMsg(text, type) {
+      const el = document.getElementById('jira-status-msg');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'status-msg ' + (type || '');
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 5000);
+    }
+
+    async function fetchJiraTicketDetails(ticket) {
+      try {
+        const proxyUrl = `http://localhost:8091/proxy?url=${encodeURIComponent('https://amd.atlassian.net/rest/api/2/issue/' + ticket.key + '?fields=summary,status,assignee,updated,comment')}`;
+        const headers = {};
+        if (settings.jiraEmail && settings.jiraToken) {
+          headers['X-Jira-Auth'] = btoa(`${settings.jiraEmail}:${settings.jiraToken}`);
+        }
+        const resp = await fetch(proxyUrl, { headers });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data && data.fields) {
+          ticket.summary = data.fields.summary || '';
+          ticket.status = (data.fields.status && data.fields.status.name) || '';
+          ticket.assignee = (data.fields.assignee && data.fields.assignee.displayName) || 'Unassigned';
+          ticket.lastUpdated = data.fields.updated || '';
+          // Get last comment
+          if (data.fields.comment && data.fields.comment.comments && data.fields.comment.comments.length > 0) {
+            const last = data.fields.comment.comments[data.fields.comment.comments.length - 1];
+            const author = (last.author && last.author.displayName) || 'Unknown';
+            const body = (last.body || '').replace(/\{[^}]*\}/g, '').replace(/\[.*?\|.*?\]/g, (m) => m.replace(/.*\|/,'').replace(']','')).substring(0, 120);
+            ticket.lastComment = author + ': ' + body;
+          } else {
+            ticket.lastComment = '';
+          }
+          ticket.fetchedAt = Date.now();
+        }
+      } catch (e) {
+        console.warn('[JiraTracker] Failed to fetch details for ' + ticket.key, e);
+      }
+    }
+
+    async function refreshAllJiraTickets() {
+      if (jiraTickets.length === 0) return;
+      showJiraMsg('Refreshing ' + jiraTickets.length + ' tickets…', 'info');
+      const batchSize = 5;
+      for (let i = 0; i < jiraTickets.length; i += batchSize) {
+        const batch = jiraTickets.slice(i, i + batchSize);
+        await Promise.allSettled(batch.map(t => fetchJiraTicketDetails(t)));
+      }
+      saveJiraTickets();
+      renderJiraList();
+      showJiraMsg('All tickets refreshed.', 'success');
+    }
+
+    function deleteJiraTicket(id) {
+      jiraTickets = jiraTickets.filter(t => t.id !== id);
+      saveJiraTickets();
+      renderJiraList();
+    }
+
+    function jiraGoToPage(page) {
+      jiraCurrentPage = page;
+      renderJiraList();
+    }
+
+    function renderJiraList() {
+      const container = document.getElementById('jira-list');
+      if (!container) return;
+      const countEl = document.getElementById('jira-count');
+      const filter = document.getElementById('jira-filter-status');
+      const filterVal = filter ? filter.value : 'all';
+
+      let filtered = jiraTickets;
+      if (filterVal === 'open') {
+        filtered = jiraTickets.filter(t => {
+          const cat = classifyJiraStatus(t.status);
+          return cat !== 'impl' && cat !== 'rejected';
+        });
+      } else if (filterVal === 'resolved') {
+        filtered = jiraTickets.filter(t => {
+          const cat = classifyJiraStatus(t.status);
+          return cat === 'impl' || cat === 'rejected';
+        });
+      }
+
+      if (countEl) countEl.textContent = filtered.length + ' tracked';
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>${jiraTickets.length === 0 ? 'No Jira tickets tracked yet.' : 'No tickets match this filter.'}</p>
+            <p class="hint">${jiraTickets.length === 0 ? 'Click the bookmarklet on any Jira ticket page, or add one manually.' : 'Try a different filter.'}</p>
+          </div>`;
+        return;
+      }
+
+      // Pagination
+      const totalPages = Math.ceil(filtered.length / JIRA_PAGE_SIZE);
+      if (jiraCurrentPage > totalPages) jiraCurrentPage = totalPages;
+      if (jiraCurrentPage < 1) jiraCurrentPage = 1;
+      const startIdx = (jiraCurrentPage - 1) * JIRA_PAGE_SIZE;
+      const pageItems = filtered.slice(startIdx, startIdx + JIRA_PAGE_SIZE);
+
+      const jiraBase = 'https://amd.atlassian.net/browse/';
+      let html = `<table class="sig-table" style="font-size:14px;">
+        <thead><tr>
+          <th>#</th>
+          <th>Ticket</th>
+          <th>Summary</th>
+          <th>Assignee</th>
+          <th>Status</th>
+          <th>Last Updated</th>
+          <th>Last Comment</th>
+          <th>Actions</th>
+        </tr></thead><tbody>`;
+
+      html += pageItems.map((t, idx) => {
+        const globalIdx = startIdx + idx;
+        const statusCat = classifyJiraStatus(t.status);
+        const statusCls = statusCat === 'impl' ? 'badge-bug-impl' : statusCat === 'rejected' ? 'badge-bug-rejected' : (t.status ? 'badge-bug-open' : 'badge-bug-default');
+        const updatedStr = t.lastUpdated ? new Date(t.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+        const isJustAdded = t.id === justAddedJiraId;
+        const rowCls = isJustAdded ? ' just-added' : '';
+        const summaryText = t.summary || (t.fetchedAt ? '(no summary)' : '<span style="color:var(--text-muted);font-style:italic">fetching…</span>');
+        const commentText = t.lastComment ? escapeHtml(t.lastComment.substring(0, 100)) + (t.lastComment.length > 100 ? '…' : '') : '<span style="color:var(--text-muted)">—</span>';
+
+        return `<tr class="${rowCls}" data-jira-id="${t.id}">
+          <td style="color:var(--text-muted);text-align:center;width:30px">${globalIdx + 1}</td>
+          <td style="white-space:nowrap"><a href="${jiraBase}${escapeHtml(t.key)}" target="_blank" class="badge ${statusCls}" style="text-decoration:none">${escapeHtml(t.key)}</a></td>
+          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(t.summary || '')}">${t.summary ? escapeHtml(t.summary) : summaryText}</td>
+          <td style="white-space:nowrap">${escapeHtml(t.assignee || '—')}</td>
+          <td><span class="badge ${statusCls}">${escapeHtml(t.status || 'Unknown')}</span></td>
+          <td style="white-space:nowrap;color:var(--text-muted)">${updatedStr}</td>
+          <td style="max-width:250px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(t.lastComment || '')}">${commentText}</td>
+          <td class="col-actions">
+            <button class="sig-action-btn" onclick="window.open('${jiraBase}${escapeHtml(t.key)}','_blank')" title="Open in Jira">&#128279;</button>
+            <button class="sig-action-btn delete" onclick="deleteJiraTicket('${t.id}')" title="Remove">&#10005;</button>
+          </td>
+        </tr>`;
+      }).join('');
+
+      html += '</tbody></table>';
+
+      // Pagination nav
+      if (totalPages > 1) {
+        html += `<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;">`;
+        html += `<button class="btn btn-small" onclick="jiraGoToPage(${jiraCurrentPage - 1})" ${jiraCurrentPage <= 1 ? 'disabled' : ''} style="min-width:28px;padding:3px 8px;font-size:13px;">&laquo; Prev</button>`;
+        for (let p = 1; p <= totalPages; p++) {
+          const active = p === jiraCurrentPage ? 'background:var(--accent);color:#fff;' : '';
+          html += `<button class="btn btn-small" onclick="jiraGoToPage(${p})" style="min-width:28px;padding:3px 8px;font-size:13px;${active}">${p}</button>`;
+        }
+        html += `<button class="btn btn-small" onclick="jiraGoToPage(${jiraCurrentPage + 1})" ${jiraCurrentPage >= totalPages ? 'disabled' : ''} style="min-width:28px;padding:3px 8px;font-size:13px;">Next &raquo;</button>`;
+        html += `</div>`;
+      }
+
+      container.innerHTML = html;
+
+      if (justAddedJiraId) {
+        setTimeout(() => {
+          const el = document.querySelector('tr.just-added[data-jira-id]');
+          if (el) el.classList.remove('just-added');
+          justAddedJiraId = null;
+        }, 4000);
+      }
+
+      // Auto-fetch details for tickets that haven't been fetched recently
+      const JIRA_TICKET_CACHE_MS = 5 * 60 * 1000; // 5 minute cache
+      const now = Date.now();
+      const stale = jiraTickets.filter(t => !t.fetchedAt || (now - t.fetchedAt) > JIRA_TICKET_CACHE_MS);
+      if (stale.length > 0) {
+        (async () => {
+          for (let i = 0; i < stale.length; i += 5) {
+            const batch = stale.slice(i, i + 5);
+            await Promise.allSettled(batch.map(t => fetchJiraTicketDetails(t)));
+          }
+          saveJiraTickets();
+          renderJiraList();
+        })();
+      }
+    }
+
+    // ===== Date Chip Helpers =====
+    function addDateChip(type) {
+      const inputId = type === 'ooo' ? 'ooo-date-input' : 'vacation-date-input';
+      const input = document.getElementById(inputId);
+      const dateVal = input.value;
+      if (!dateVal) return;
+
+      const today = toLocalDateStr(new Date());
+
+      // OOO: only today or past dates (weekdays you were absent)
+      if (type === 'ooo' && dateVal > today) {
+        showStatus('OOO dates must be today or earlier (days you were absent).', 'error');
+        input.value = '';
+        return;
+      }
+
+      // Vacation: only future dates
+      if (type === 'vacation' && dateVal <= today) {
+        showStatus('Vacation dates must be in the future.', 'error');
+        input.value = '';
+        return;
+      }
+
+      const arr = type === 'ooo' ? oooDates : vacationDates;
+      if (arr.includes(dateVal)) { input.value = ''; return; }
+
+      arr.push(dateVal);
+      arr.sort();
+      input.value = '';
+      // Persist
+      if (type === 'ooo') saveOooDates(); else saveVacationDates();
+      renderDateChips(type);
+      recalcEffectiveBandwidth();
+    }
+
+    function handleDateChipRemove(e) {
+      const btn = e.target.closest('.date-chip-remove');
+      if (!btn) return;
+      const date = btn.dataset.date;
+      const type = btn.dataset.type;
+      const arr = type === 'ooo' ? oooDates : vacationDates;
+      const idx = arr.indexOf(date);
+      if (idx !== -1) arr.splice(idx, 1);
+      // Persist
+      if (type === 'ooo') saveOooDates(); else saveVacationDates();
+      renderDateChips(type);
+      recalcEffectiveBandwidth();
+    }
+
+    function renderDateChips(type) {
+      const arr = type === 'ooo' ? oooDates : vacationDates;
+      const container = document.getElementById(type === 'ooo' ? 'ooo-dates-list' : 'vacation-dates-list');
+      container.innerHTML = arr.map(d => {
+        const display = formatShortDate(d);
+        return `<span class="date-chip">${display}<button class="date-chip-remove" data-date="${d}" data-type="${type}" title="Remove">&times;</button></span>`;
+      }).join('');
+    }
+
+    function formatShortDate(dateStr) {
+      const d = new Date(dateStr + 'T00:00:00');
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    // Get all OOO-equivalent dates in the report week:
+    // = manual OOO dates in the week + vacation dates that fall in the week
+    function getOooDatesInWeek(reportDate) {
+      if (!reportDate) return [];
+      const weekStart = reportDate;
+      const weekEnd = getWeekEnd(reportDate);
+      const manualOoo = oooDates.filter(d => d >= weekStart && d <= weekEnd);
+      const vacAsOoo = vacationDates.filter(d => d >= weekStart && d <= weekEnd);
+      const merged = [...new Set([...manualOoo, ...vacAsOoo])];
+      merged.sort();
+      return merged;
+    }
+
+    function recalcEffectiveBandwidth() {
+      const reportDayVal = document.getElementById('input-report-date').value;
+      const reportDate = reportDateToWeekStart(reportDayVal);
+      const allocated = parseInt(document.getElementById('input-alloc-bandwidth').value) || 100;
+      const oooInWeek = getOooDatesInWeek(reportDate);
+      const daysOff = oooInWeek.length;
+      const daysPresent = Math.max(0, 5 - daysOff);
+      const effective = Math.round(allocated * daysPresent / 5);
+
+      document.getElementById('effective-bandwidth').textContent = effective + '%';
+      document.getElementById('bandwidth-calc-hint').innerHTML =
+        `${allocated}% allocated &times; ${daysPresent}/5 workdays = ${effective}%`;
+    }
+
+    function formatOooDatesForReport(reportDate) {
+      const weekOoo = getOooDatesInWeek(reportDate);
+      if (weekOoo.length === 0) return '';
+      return `${weekOoo.length} ED (${weekOoo.map(formatShortDate).join(', ')})`;
+    }
+
+    function formatVacationDatesForReport(reportDate) {
+      if (vacationDates.length === 0) return '';
+      // Only show vacation dates AFTER the report week ends
+      const weekEnd = reportDate ? getWeekEnd(reportDate) : toLocalDateStr(new Date());
+      const upcoming = vacationDates.filter(d => d > weekEnd);
+      if (upcoming.length === 0) return '';
+      return upcoming.map(formatShortDate).join(', ');
+    }
+
+    // ===== Report Generation =====
+    function generateReport() {
+      const reportDayVal = document.getElementById('input-report-date').value;
+      if (!reportDayVal) {
+        showStatus('Please select a report date.', 'error');
+        return;
+      }
+      const reportDate = reportDateToWeekStart(reportDayVal); // internal week start
+      const engineerName = document.getElementById('input-engineer-name').value.trim() || settings.fullName || 'Engineer';
+      const format = document.getElementById('report-format').value;
+      const allocated = parseInt(document.getElementById('input-alloc-bandwidth').value) || 100;
+      const oooInWeek = getOooDatesInWeek(reportDate);
+      const daysPresent = Math.max(0, 5 - oooInWeek.length);
+      const effectiveBandwidth = Math.round(allocated * daysPresent / 5);
+      const ooo = formatOooDatesForReport(reportDate);
+      const vacation = formatVacationDatesForReport(reportDate);
+
+      // Include: sigs added this week + in-progress sigs from previous weeks (carry forward)
+      let reportSigs = signatures.filter(sig =>
+        isInWeek(sig, reportDate) || isCarriedForward(sig, reportDate)
+      );
+
+      if (reportSigs.length === 0) {
+        showStatus('No signatures to include in report for this week.', 'warning');
+        return;
+      }
+
+      const dateStr = reportDayVal.replace(/-/g, '');
+      const twikiUrl = `${settings.twikiBaseUrl}${dateStr}`;
+
+      let output = '';
+
+      if (format === 'twiki') {
+        output = generateTWikiReport(reportSigs, engineerName, effectiveBandwidth, allocated, ooo, vacation);
+      } else if (format === 'plain') {
+        output = generatePlainReport(reportSigs, engineerName, effectiveBandwidth, allocated, ooo, vacation);
+      }
+
+      document.getElementById('report-output').value = output;
+      document.getElementById('report-output-container').classList.remove('hidden');
+
+      const twikiLinkEl = document.getElementById('twiki-link');
+      twikiLinkEl.innerHTML = `TWiki page: <a href="${twikiUrl}" target="_blank">${twikiUrl}</a>`;
+      twikiLinkEl.classList.remove('hidden');
+    }
+
+    function generateTWikiReport(sigs, engineer, bandwidth, allocated, ooo, vacation) {
+      const lines = [];
+      const jiraBase = 'https://amd.atlassian.net/browse/';
+
+      const debugged = sigs.filter(s => s.debugStatus === 'debugged');
+      const inProgress = sigs.filter(s => s.debugStatus !== 'debugged');
+
+      const bugsWithId = sigs.filter(s => s.bugNo);
+      const rtlBugs = bugsWithId.filter(s => (s.bugType || 'RTL') === 'RTL').length;
+      const verifBugs = bugsWithId.filter(s => (s.bugType || 'RTL') === 'Verif').length;
+
+      lines.push(`---++++ ${engineer}`);
+      lines.push(`   * `);
+      lines.push(`      * No. of signatures debugged : ${debugged.length}`);
+      lines.push(`      * Debug Bandwidth : ${bandwidth}%`);
+      lines.push(`      * No. of bugs filed: ${bugsWithId.length}`);
+      lines.push(`         * RTL: ${rtlBugs}`);
+      lines.push(`         * Verif: ${verifBugs}`);
+      lines.push(`      * Signature debug details:`);
+
+      lines.push(`         * *Debugged*`);
+      if (debugged.length > 0) {
+        debugged.forEach(sig => {
+          const crdbLink = sig.url ? `[[${sig.url}][${sig.name}]]` : sig.name;
+          let bugPart = '';
+          if (sig.bugNo) {
+            const jiraUrl = sig.bugNo.includes('-') ? `${jiraBase}${sig.bugNo}` : '';
+            bugPart = jiraUrl ? `: [[${jiraUrl}][${sig.bugNo}]]` : `: ${sig.bugNo}`;
+          }
+          const notePart = sig.statusNote ? ` (${sig.statusNote})` : '';
+          lines.push(`            * ${crdbLink}${bugPart}${notePart}`);
+        });
+      } else {
+        lines.push(`            * `);
+      }
+
+      lines.push(`         * *In Progress*`);
+      if (inProgress.length > 0) {
+        inProgress.forEach(sig => {
+          const crdbLink = sig.url ? `[[${sig.url}][${sig.name}]]` : sig.name;
+          let bugPart = '';
+          if (sig.bugNo) {
+            const jiraUrl = sig.bugNo.includes('-') ? `${jiraBase}${sig.bugNo}` : '';
+            bugPart = jiraUrl ? `: [[${jiraUrl}][${sig.bugNo}]]` : `: ${sig.bugNo}`;
+          }
+          const notePart = sig.statusNote ? ` (${sig.statusNote})` : '';
+          lines.push(`            * ${crdbLink}${bugPart}${notePart}`);
+        });
+      } else {
+        lines.push(`            * `);
+      }
+
+      lines.push(`      * Misc:`);
+      lines.push(`         * Out of Office(Vacation/Holiday/Sick etc.) : ${ooo || ''}`);
+      lines.push(`         * Upcoming Vacations: ${vacation || ''}`);
+
+      return lines.join('\n');
+    }
+
+    function generatePlainReport(sigs, engineer, bandwidth, allocated, ooo, vacation) {
+      const lines = [];
+      const debugged = sigs.filter(s => s.debugStatus === 'debugged');
+      const inProgress = sigs.filter(s => s.debugStatus !== 'debugged');
+      const bugsWithId = sigs.filter(s => s.bugNo);
+      const rtlBugs = bugsWithId.filter(s => (s.bugType || 'RTL') === 'RTL').length;
+      const verifBugs = bugsWithId.filter(s => (s.bugType || 'RTL') === 'Verif').length;
+
+      lines.push(`${engineer}`);
+      lines.push('='.repeat(40));
+      lines.push(`Signatures debugged: ${debugged.length}`);
+      lines.push(`Debug Bandwidth: ${bandwidth}%`);
+      lines.push(`Bugs filed: ${bugsWithId.length} (RTL: ${rtlBugs}, Verif: ${verifBugs})`);
+      lines.push('');
+      lines.push('--- Debugged ---');
+      debugged.forEach(sig => {
+        const bug = sig.bugNo ? ` [${sig.bugNo}]` : '';
+        const note = sig.statusNote ? ` (${sig.statusNote})` : '';
+        lines.push(`  - ${sig.name}${bug}${note}`);
+        if (sig.url) lines.push(`    ${sig.url}`);
+      });
+      lines.push('');
+      lines.push('--- In Progress ---');
+      inProgress.forEach(sig => {
+        const note = sig.statusNote ? ` (${sig.statusNote})` : '';
+        lines.push(`  - ${sig.name}${note}`);
+        if (sig.url) lines.push(`    ${sig.url}`);
+      });
+      lines.push('');
+      if (ooo) lines.push(`OOO: ${ooo}`);
+      if (vacation) lines.push(`Upcoming Vacations: ${vacation}`);
+
+      return lines.join('\n');
+    }
+
+    // ===== Copy Report =====
+    async function copyReport() {
+      const output = document.getElementById('report-output').value;
+      try {
+        await navigator.clipboard.writeText(output);
+        const statusEl = document.getElementById('copy-status');
+        statusEl.classList.remove('hidden');
+        setTimeout(() => statusEl.classList.add('hidden'), 2000);
+      } catch (err) {
+        document.getElementById('report-output').select();
+        document.execCommand('copy');
+      }
+    }
+
+    // ===== Settings =====
+    function populateSettings() {
+      document.getElementById('setting-full-name').value = settings.fullName || '';
+      document.getElementById('setting-eng-name').value = settings.engineerName || '';
+      document.getElementById('setting-twiki-url').value = settings.twikiBaseUrl;
+      document.getElementById('setting-report-day').value = settings.reportDay ?? 1;
+      document.getElementById('setting-jira-email').value = settings.jiraEmail || '';
+      document.getElementById('setting-jira-token').value = settings.jiraToken || '';
+      document.getElementById('input-engineer-name').value = settings.fullName || '';
+      document.getElementById('input-alloc-bandwidth').value = settings.allocatedBandwidth ?? 100;
+      // Update report week label
+      const dayName = DAY_NAMES[settings.reportDay ?? 1];
+      document.querySelector('label[for="input-report-date"],#report-week-label').textContent = `Report Week (${dayName})`;
+    }
+
+    function saveSettingsFromUI() {
+      settings.fullName = document.getElementById('setting-full-name').value.trim();
+      settings.engineerName = document.getElementById('setting-eng-name').value.trim();
+      settings.twikiBaseUrl = document.getElementById('setting-twiki-url').value.trim();
+      settings.reportDay = parseInt(document.getElementById('setting-report-day').value) || 1;
+      settings.jiraEmail = document.getElementById('setting-jira-email').value.trim();
+      settings.jiraToken = document.getElementById('setting-jira-token').value.trim();
+      saveSettings();
+      showSettingsStatus('Settings saved!', 'success');
+
+      // Update label + recalculate
+      const dayName = DAY_NAMES[settings.reportDay];
+      document.getElementById('report-week-label').textContent = `Report Week (${dayName})`;
+      setDefaultReportDate();
+
+      // Regenerate bookmarklet with potentially updated info
+      setupBookmarklet();
+    }
+
+    // ===== CSV History Log =====
+    function downloadCSVLog() {
+      if (signatures.length === 0) {
+        showStatus('No signatures to export.', 'warning');
+        return;
+      }
+
+      // Group signatures by week
+      const weekMap = {};
+      signatures.forEach(sig => {
+        const addedDate = sig.dateAdded ? sig.dateAdded.slice(0, 10) : 'unknown';
+        const weekStart = addedDate !== 'unknown' ? getWeekStart(addedDate) : 'unknown';
+        if (!weekMap[weekStart]) weekMap[weekStart] = [];
+        weekMap[weekStart].push(sig);
+      });
+
+      // Sort weeks descending (most recent first)
+      const sortedWeeks = Object.keys(weekMap).sort().reverse();
+
+      // CSV header
+      const csvEsc = (val) => {
+        if (!val) return '';
+        const s = String(val);
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+      };
+
+      const rows = [];
+      rows.push(['Week', 'Date Added', 'Signature Name', 'CRDB URL', 'Bug ID', 'Bug Type', 'Debug Status', 'Status Note', 'Project', 'Notes'].join(','));
+
+      sortedWeeks.forEach(weekStart => {
+        const weekLabel = weekStart === 'unknown' ? 'Unknown Week' : `${formatShortDate(weekStart)} - ${formatShortDate(getWeekEnd(weekStart))}`;
+        const sigs = weekMap[weekStart].sort((a, b) => (a.dateAdded || '').localeCompare(b.dateAdded || ''));
+
+        sigs.forEach(sig => {
+          const addedStr = sig.dateAdded ? new Date(sig.dateAdded).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+          rows.push([
+            csvEsc(weekLabel),
+            csvEsc(addedStr),
+            csvEsc(sig.name),
+            csvEsc(sig.url),
+            csvEsc(sig.bugNo),
+            csvEsc(sig.bugType || 'RTL'),
+            csvEsc(sig.debugStatus || 'in-progress'),
+            csvEsc(sig.statusNote),
+            csvEsc(sig.project),
+            csvEsc(sig.notes)
+          ].join(','));
+        });
+      });
+
+      const csvContent = rows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `crdb-history-${toLocalDateStr(new Date())}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showStatus('CSV history log downloaded.', 'success');
+    }
+
+    // ===== Data Management =====
+    function exportData() {
+      const data = { signatures, settings, oooDates, vacationDates, jiraTickets, exportDate: new Date().toISOString() };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `crdb-tracker-export-${toLocalDateStr(new Date())}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.signatures) {
+          signatures = data.signatures;
+          saveSignatures();
+        }
+        if (data.settings) {
+          settings = { ...DEFAULT_SETTINGS, ...data.settings };
+          saveSettings();
+          populateSettings();
+        }
+        if (data.oooDates) { oooDates = data.oooDates; saveOooDates(); renderDateChips('ooo'); }
+        if (data.vacationDates) { vacationDates = data.vacationDates; saveVacationDates(); renderDateChips('vacation'); }
+        if (data.jiraTickets) { jiraTickets = data.jiraTickets; saveJiraTickets(); }
+        renderSignatureList();
+        renderJiraList();
+        recalcEffectiveBandwidth();
+        showSettingsStatus('Data imported successfully!', 'success');
+      } catch (err) {
+        showSettingsStatus('Import failed: Invalid JSON file.', 'error');
+      }
+      event.target.value = '';
+    }
+
+    function clearAllData() {
+      if (!confirm('Are you sure you want to delete ALL tracked signatures and settings? This cannot be undone.')) return;
+      signatures = [];
+      settings = { ...DEFAULT_SETTINGS };
+      oooDates = [];
+      vacationDates = [];
+      localStorage.removeItem(STORAGE_SIGS);
+      localStorage.removeItem(STORAGE_SETTINGS);
+      localStorage.removeItem(STORAGE_OOO);
+      localStorage.removeItem(STORAGE_VACATION);
+      localStorage.removeItem(STORAGE_LAST_REFRESH);
+      localStorage.removeItem(STORAGE_JIRA_TICKETS);
+      jiraTickets = [];
+      renderSignatureList();
+      renderJiraList();
+      populateSettings();
+      renderDateChips('ooo');
+      renderDateChips('vacation');
+      recalcEffectiveBandwidth();
+      showSettingsStatus('All data cleared.', 'success');
+    }
+
+    // ===== Bookmarklet Setup =====
+    // ===== Bug Data Refresh =====
+    function updateLastRefreshDisplay() {
+      const el = document.getElementById('last-refresh-time');
+      if (!el) return;
+      const last = localStorage.getItem(STORAGE_LAST_REFRESH);
+      if (!last) { el.textContent = 'Never refreshed'; return; }
+      const d = new Date(last);
+      const ago = getTimeAgo(d);
+      el.textContent = `Last refreshed: ${ago}`;
+      el.title = d.toLocaleString();
+    }
+
+    function getTimeAgo(date) {
+      const mins = Math.floor((Date.now() - date.getTime()) / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      return `${days}d ago`;
+    }
+
+    function scheduleAutoRefresh() {
+      const last = localStorage.getItem(STORAGE_LAST_REFRESH);
+      const elapsed = last ? Date.now() - new Date(last).getTime() : Infinity;
+      if (elapsed >= REFRESH_INTERVAL_MS) {
+        // Due for refresh — slight delay so UI loads first
+        setTimeout(() => refreshSignatures(true), 2000);
+      } else {
+        // Schedule next refresh for when 12h elapses
+        setTimeout(() => refreshSignatures(true), REFRESH_INTERVAL_MS - elapsed);
+      }
+      // Also set recurring interval
+      setInterval(() => refreshSignatures(true), REFRESH_INTERVAL_MS);
+    }
+
+    async function refreshSignatures(isAuto = false) {
+      const sigsWithUrl = signatures.filter(s => s.url && s.url.includes('crdb3.amd.com'));
+      if (sigsWithUrl.length === 0) {
+        if (!isAuto) showStatus('No CRDB signatures with URLs to refresh.', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('btn-refresh-sigs');
+      const progressEl = document.getElementById('refresh-progress');
+      if (btn) btn.classList.add('btn-refreshing');
+      if (progressEl) {
+        progressEl.classList.remove('hidden');
+        progressEl.innerHTML = `Refreshing 0/${sigsWithUrl.length}...`;
+      }
+
+      let updated = 0, errors = 0, unchanged = 0;
+      const results = [];
+
+      for (let i = 0; i < sigsWithUrl.length; i++) {
+        const sig = sigsWithUrl[i];
+        if (progressEl) progressEl.innerHTML = `Refreshing ${i + 1}/${sigsWithUrl.length}... <em>${escapeHtml(sig.name).slice(0, 40)}</em>`;
+
+        try {
+          const proxyUrl = `/proxy?url=${encodeURIComponent(sig.url)}`;
+          const resp = await fetch(proxyUrl);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const html = await resp.text();
+
+          // Parse bug number from CRDB page HTML (same logic as bookmarklet)
+          let newBug = '';
+          // Try table rows first
+          const rowRe = /<t[dh][^>]*>(.*?)<\/t[dh]>/gi;
+          const cells = [];
+          let m;
+          while ((m = rowRe.exec(html)) !== null) {
+            cells.push(m[1].replace(/<[^>]+>/g, '').trim());
+          }
+          for (let j = 0; j < cells.length - 1; j++) {
+            const label = cells[j].toLowerCase();
+            const val = cells[j + 1];
+            if ((label.includes('bug') && (label.includes('no') || label.includes('num') || label.includes('id')))) {
+              if (val && val !== '-' && val !== 'N/A' && val !== 'None') {
+                const jm = val.match(/([A-Z][A-Z0-9]+-\d+)/i);
+                if (jm) newBug = jm[1].toUpperCase();
+              }
+            }
+          }
+          // Fallback: search full text
+          if (!newBug) {
+            const textMatch = html.replace(/<[^>]+>/g, ' ').match(/Bug\s*(?:No|Number|ID)[\s:]*([A-Z]+-\d+|\d+)/i);
+            if (textMatch) newBug = textMatch[1].toUpperCase();
+          }
+
+          const cleanedBug = sanitizeBugNo(newBug);
+          const oldBug = sig.bugNo || '';
+
+          if (cleanedBug && cleanedBug !== oldBug) {
+            sig.bugNo = cleanedBug;
+            sig.status = 'has-bug';
+            sig.debugStatus = 'debugged';
+            sig.lastChecked = new Date().toISOString();
+            updated++;
+            results.push({ name: sig.name, type: 'updated', detail: `${oldBug || 'none'} → ${cleanedBug}` });
+          } else {
+            sig.lastChecked = new Date().toISOString();
+            unchanged++;
+            results.push({ name: sig.name, type: 'same' });
+          }
+        } catch (e) {
+          errors++;
+          results.push({ name: sig.name, type: 'error', detail: e.message });
+        }
+
+        // Small delay between requests to not hammer the server
+        if (i < sigsWithUrl.length - 1) await new Promise(r => setTimeout(r, 500));
+      }
+
+      saveSignatures();
+      localStorage.setItem(STORAGE_LAST_REFRESH, new Date().toISOString());
+      updateLastRefreshDisplay();
+      renderSignatureList();
+
+      if (btn) btn.classList.remove('btn-refreshing');
+
+      if (progressEl) {
+        let summary = `<strong>Refresh complete:</strong> ${updated} updated, ${unchanged} unchanged, ${errors} failed`;
+        if (updated > 0 || errors > 0) {
+          summary += '<div style="margin-top:6px">';
+          for (const r of results) {
+            if (r.type === 'updated') {
+              summary += `<div class="refresh-result refresh-result-updated">&#x2714; ${escapeHtml(r.name.slice(0, 40))}: ${escapeHtml(r.detail)}</div>`;
+            } else if (r.type === 'error') {
+              summary += `<div class="refresh-result refresh-result-error">&#x2718; ${escapeHtml(r.name.slice(0, 40))}: ${escapeHtml(r.detail)}</div>`;
+            }
+          }
+          summary += '</div>';
+        }
+        progressEl.innerHTML = summary;
+        // Auto-hide after 15 seconds for auto-refresh, keep visible for manual
+        if (isAuto) setTimeout(() => progressEl.classList.add('hidden'), 15000);
+      }
+
+      if (!isAuto) {
+        if (updated > 0) showStatus(`Refreshed: ${updated} signature(s) updated with new bug data.`, 'success');
+        else if (errors === sigsWithUrl.length) showStatus('Refresh failed — make sure you started the server with server.py (not plain http.server).', 'error');
+        else showStatus(`Refresh complete — no changes found. ${errors > 0 ? errors + ' failed.' : ''}`, 'success');
+      }
+    }
+
+    function setupBookmarklet() {
+      const trackerUrl = window.location.href.split('?')[0];
+
+      // Bookmarklet code — runs on CRDB or Jira pages, extracts info, opens tracker
+      const bookmarkletCode = `javascript:void(function(){var loc=location.href;var isJira=loc.indexOf('atlassian.net/browse/')>-1||loc.indexOf('atlassian.net/jira/')>-1;var isCrdb=loc.indexOf('crdb3.amd.com')>-1;if(!isJira&&!isCrdb){alert('Not a CRDB or Jira page! Navigate to a CRDB simulation page or Jira ticket first.');return}if(isJira){var km=loc.match(/\\/browse\\/([A-Z][A-Z0-9]+-\\d+)/i)||loc.match(/\\/([A-Z][A-Z0-9]+-\\d+)/i);if(!km){alert('Could not extract Jira ticket key from URL.');return}var jk=km[1].toUpperCase();var q='?add=1&popup=1&source=jira&jirakey='+encodeURIComponent(jk);window.open('${encodeURI(trackerUrl)}'+q,'crdb-tracker-save','width=340,height=180,top=80,left='+(screen.width-400));var d=document.createElement('div');d.style.cssText='position:fixed;bottom:20px;right:20px;background:#1565c0;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-family:sans-serif;';d.textContent='\\u2713 Jira Tracked!';document.body.appendChild(d);setTimeout(function(){d.remove()},2500);return}var n='',b='',p='';try{var t=document.querySelector('h1,h2,.signature-name,[data-field=signature],.sim-name');if(t)n=t.textContent.trim();var at=document.body.innerText||'';var bm=at.match(/Bug\\s*(?:No|Number|ID)[\\s:]*([A-Z]+-\\d+|\\d+)/i);if(bm)b=bm[1];var rows=document.querySelectorAll('table tr');for(var r=0;r<rows.length;r++){var c=rows[r].querySelectorAll('td,th');for(var i=0;i<c.length-1;i++){var l=c[i].textContent.trim().toLowerCase();var v=c[i+1].textContent.trim();if(l.indexOf('bug')>-1&&(l.indexOf('no')>-1||l.indexOf('num')>-1||l.indexOf('id')>-1)){if(v&&v!=='-'&&v!=='N/A'&&v!=='None'){var jm=v.match(/([A-Z][A-Z0-9]+-\\d+)/i);if(jm)b=jm[1].toUpperCase()}}if(l.indexOf('signature')>-1||l.indexOf('sig name')>-1)n=v;if(l.indexOf('project')>-1)p=v}}}catch(e){}n=(n||document.title||'Unknown').replace(/\\s*:?\\s*Type\\s*\\(Click to clear sorting\\)/gi,'').trim();var q='?add=1&popup=1&source=crdb&url='+encodeURIComponent(location.href)+'&name='+encodeURIComponent(n)+'&bug='+encodeURIComponent(b)+'&project='+encodeURIComponent(p);window.open('${encodeURI(trackerUrl)}'+q,'crdb-tracker-save','width=340,height=180,top=80,left='+(screen.width-400));var d=document.createElement('div');d.style.cssText='position:fixed;bottom:20px;right:20px;background:#388e3c;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-family:sans-serif;';d.textContent='\\u2713 Tracked!';document.body.appendChild(d);setTimeout(function(){d.remove()},2500)}())`;
+
+      const link = document.getElementById('bookmarklet-link');
+      link.href = bookmarkletCode;
+    }
+
+    // ===== Utility Functions =====
+    function sanitizeBugNo(raw) {
+      if (!raw) return '';
+      raw = raw.trim();
+      const match = raw.match(/([A-Z][A-Z0-9]+-\d+)/i);
+      if (match) return match[1].toUpperCase();
+      if (/^\d+$/.test(raw)) return raw;
+      return raw;
+    }
+
+    function generateId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    function extractSimId(url) {
+      if (!url) return '';
+      const match = url.match(/simulations\/([a-f0-9-]+)/i);
+      return match ? match[1] : '';
+    }
+
+    function extractSigNameFromUrl(url) {
+      try {
+        const u = new URL(url);
+        for (const key of ['signature', 'sig', 'name', 'sig_name']) {
+          if (u.searchParams.has(key)) return u.searchParams.get(key);
+        }
+      } catch (e) {}
+      return '';
+    }
+
+    // ===== Week Helpers (configurable report day) =====
+    // reportDay setting: 0=Sun..6=Sat (default 1=Monday)
+    // Week runs from (reportDay+1) through reportDay.
+    // E.g. reportDay=1 (Mon) → Tue–Mon. reportDay=3 (Wed) → Thu–Wed.
+
+    // Format a Date object as YYYY-MM-DD in LOCAL timezone (not UTC)
+    function toLocalDateStr(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    }
+
+    function getReportDay() {
+      return settings.reportDay ?? 1;
+    }
+
+    // Get the week-start date (day after report day) for the week containing a given date
+    function getWeekStart(dateStr) {
+      const rDay = getReportDay();
+      const startDay = (rDay + 1) % 7; // day after report day
+      const d = new Date(dateStr + 'T00:00:00');
+      const day = d.getDay();
+      let offset = (day - startDay + 7) % 7;
+      d.setDate(d.getDate() - offset);
+      return toLocalDateStr(d);
+    }
+
+    // Get the week-end date (report day) for a week that starts on weekStartStr
+    function getWeekEnd(weekStartStr) {
+      const d = new Date(weekStartStr + 'T00:00:00');
+      d.setDate(d.getDate() + 6);
+      return toLocalDateStr(d);
+    }
+
+    // Check if a signature was added in the given report week
+    function isInWeek(sig, weekStart) {
+      const addedDate = sig.dateAdded.slice(0, 10);
+      const weekEnd = getWeekEnd(weekStart);
+      return addedDate >= weekStart && addedDate <= weekEnd;
+    }
+
+    // Check if a signature is carried forward (added before this week, still in-progress)
+    function isCarriedForward(sig, weekStart) {
+      const addedDate = sig.dateAdded.slice(0, 10);
+      return addedDate < weekStart && sig.debugStatus !== 'debugged';
+    }
+
+    // Get the current week's start date
+    function getCurrentWeekStart() {
+      return getWeekStart(toLocalDateStr(new Date()));
+    }
+
+    function setDefaultReportDate() {
+      const reportDate = getUpcomingReportDay();
+      document.getElementById('input-report-date').value = reportDate;
+      updateDateRestrictions();
+      recalcEffectiveBandwidth();
+    }
+
+    // Get the closest upcoming report day (today if today is report day, else next occurrence)
+    function getUpcomingReportDay() {
+      const rDay = getReportDay();
+      const d = new Date();
+      const day = d.getDay();
+      if (day !== rDay) {
+        const daysAhead = (rDay - day + 7) % 7;
+        d.setDate(d.getDate() + daysAhead);
+      }
+      return toLocalDateStr(d);
+    }
+
+    // Convert report-day date from UI to week-start date (day after previous report day)
+    function reportDateToWeekStart(reportDayStr) {
+      if (!reportDayStr) return '';
+      const d = new Date(reportDayStr + 'T00:00:00');
+      d.setDate(d.getDate() - 6);
+      return toLocalDateStr(d);
+    }
+
+    function shiftReportWeek(direction) {
+      const input = document.getElementById('input-report-date');
+      const current = input.value;
+      if (!current) { setDefaultReportDate(); return; }
+      const d = new Date(current + 'T00:00:00');
+      d.setDate(d.getDate() + (direction * 7));
+      input.value = toLocalDateStr(d);
+      recalcEffectiveBandwidth();
+    }
+
+    function updateDateRestrictions() {
+      const today = toLocalDateStr(new Date());
+      const tom = new Date();
+      tom.setDate(tom.getDate() + 1);
+      const tomorrow = toLocalDateStr(tom);
+      // OOO: can only pick today or earlier (past absences)
+      document.getElementById('ooo-date-input').max = today;
+      // Vacation: can only pick tomorrow or later (future dates)
+      document.getElementById('vacation-date-input').min = tomorrow;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function showStatus(msg, type) {
+      const el = document.getElementById('status-msg');
+      el.textContent = msg;
+      el.className = `status-msg ${type}`;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 4000);
+    }
+
+    function showSettingsStatus(msg, type) {
+      const el = document.getElementById('settings-status');
+      el.textContent = msg;
+      el.className = `status-msg ${type}`;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    // ===== TWiki Search =====
+    // Normalize text: convert &nbsp; (\u00a0) and other Unicode whitespace to regular spaces
+    function normalizeText(s) {
+      return s.replace(/[\u00a0\u200b\u200c\u200d\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/g, ' ');
+    }
+
+    let _twikiAuthToken = ''; // in-memory only, never saved
+
+    function getTwikiAuth() {
+      // Check if credentials are already cached
+      if (_twikiAuthToken) return _twikiAuthToken;
+
+      const user = document.getElementById('twiki-username').value.trim();
+      const pass = document.getElementById('twiki-password').value;
+
+      if (!user || !pass) return '';
+
+      // Encode as base64 for transport to proxy (proxy decodes and uses -u user:pass)
+      _twikiAuthToken = btoa(user + ':' + pass);
+      return _twikiAuthToken;
+    }
+
+    async function searchTWiki() {
+      const query = document.getElementById('search-sig-input').value.trim();
+      if (!query) { return; }
+
+      const authToken = getTwikiAuth();
+      if (!authToken) {
+        document.getElementById('search-results').innerHTML = '<div class="search-no-results" style="color:var(--warning);">&#9888; Please enter your TWiki username and password above to search.</div>';
+        return;
+      }
+
+      const pageCount = parseInt(document.getElementById('search-page-count').value) || 10;
+      const btn = document.getElementById('btn-search-twiki');
+      const progressEl = document.getElementById('search-progress');
+      const resultsEl = document.getElementById('search-results');
+      const baseUrl = settings.twikiBaseUrl || DEFAULT_SETTINGS.twikiBaseUrl;
+
+      btn.classList.add('btn-refreshing');
+      progressEl.classList.remove('hidden');
+      resultsEl.innerHTML = '';
+
+      // Compute the last N report-day dates going backward from today
+      const rDay = getReportDay();
+      const reportDates = [];
+      const d = new Date();
+      // Go back to the most recent report day (or today if today is report day)
+      let dayDiff = (d.getDay() - rDay + 7) % 7;
+      d.setDate(d.getDate() - dayDiff);
+      for (let i = 0; i < pageCount; i++) {
+        reportDates.push(toLocalDateStr(d));
+        d.setDate(d.getDate() - 7);
+      }
+
+      const allResults = [];
+      let pagesSearched = 0;
+      let pagesErrored = 0;
+      let authFailed = false;
+
+      for (let i = 0; i < reportDates.length; i++) {
+        const dateStr = reportDates[i].replace(/-/g, '');
+        const pageUrl = baseUrl + dateStr;
+        progressEl.innerHTML = `Searching page ${i + 1}/${reportDates.length}... <em>${reportDates[i]}</em>`;
+
+        try {
+          const proxyUrl = `/proxy?url=${encodeURIComponent(pageUrl)}`;
+          const resp = await fetch(proxyUrl, {
+            headers: { 'X-Twiki-Auth': authToken }
+          });
+
+          if (resp.status === 401) {
+            // Auth failed — clear cached token and stop
+            _twikiAuthToken = '';
+            authFailed = true;
+            break;
+          }
+          if (!resp.ok) { pagesErrored++; continue; }
+          const html = await resp.text();
+
+          // Quick check: if the page is a login/registration redirect, auth failed
+          if (html.includes('TWikiRegistration') || html.includes('Authorization Required')) {
+            _twikiAuthToken = '';
+            authFailed = true;
+            break;
+          }
+
+          // Parse the HTML to DOM first, then search text content
+          // (raw HTML search fails when tags split the signature text)
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          // Normalize: TWiki uses &nbsp; which becomes \u00a0 in textContent
+          const bodyText = normalizeText(doc.body ? doc.body.textContent : html).toLowerCase();
+          const lowerQuery = normalizeText(query).toLowerCase();
+
+          // Check: exact substring match OR all significant words present
+          const queryWords = lowerQuery.split(/\s+/).filter(w => w.length > 2);
+          const hasExact = bodyText.includes(lowerQuery);
+          const hasAllWords = queryWords.length > 0 && queryWords.every(w => bodyText.includes(w));
+
+          if (!hasExact && !hasAllWords) {
+            pagesSearched++;
+            continue;
+          }
+
+          // Search table rows for the signature (pass pre-parsed doc)
+          const matches = parseTWikiForSignature(doc, query, pageUrl, reportDates[i]);
+          if (matches.length > 0) {
+            allResults.push(...matches);
+          }
+          pagesSearched++;
+        } catch (e) {
+          pagesErrored++;
+        }
+
+        // Small delay between requests
+        if (i < reportDates.length - 1) await new Promise(r => setTimeout(r, 300));
+      }
+
+      btn.classList.remove('btn-refreshing');
+      progressEl.classList.add('hidden');
+
+      // Render results
+      if (authFailed) {
+        resultsEl.innerHTML = '<div class="search-no-results" style="color:var(--danger);">&#10007; TWiki authentication failed. Please check your username and password.</div>';
+      } else if (allResults.length === 0) {
+        // TWiki returned nothing — try Jira fallback
+        resultsEl.innerHTML = `<div class="search-no-results">No TWiki results for <strong>${escapeHtml(query)}</strong> across ${pagesSearched} pages.${pagesErrored > 0 ? ` (${pagesErrored} pages could not be loaded)` : ''} Searching Jira...</div>`;
+        const jiraOut = await searchJiraFallback(query, progressEl);
+        if (jiraOut.error === 'no-creds') {
+          resultsEl.innerHTML = `<div class="search-no-results">No TWiki results for <strong>${escapeHtml(query)}</strong> across ${pagesSearched} pages.${pagesErrored > 0 ? ` (${pagesErrored} failed)` : ''}</div><div class="search-no-results" style="color:var(--warning);">&#9888; Jira search skipped — please configure your Jira Email and API Token in the <strong>Settings</strong> tab.</div>`;
+        } else if (jiraOut.error === 'api-error') {
+          resultsEl.innerHTML = `<div class="search-no-results">No TWiki results for <strong>${escapeHtml(query)}</strong> across ${pagesSearched} pages.</div><div class="search-no-results" style="color:var(--danger);">&#10007; Jira search failed (HTTP ${jiraOut.status || '?'}). Check your Jira credentials in Settings.</div>`;
+        } else if (jiraOut.error === 'network') {
+          resultsEl.innerHTML = `<div class="search-no-results">No TWiki results for <strong>${escapeHtml(query)}</strong> across ${pagesSearched} pages.</div><div class="search-no-results" style="color:var(--danger);">&#10007; Jira search failed: ${escapeHtml(jiraOut.detail || 'Network error')}. Is the server running?</div>`;
+        } else if (jiraOut.results.length === 0) {
+          resultsEl.innerHTML = `<div class="search-no-results">No results found for <strong>${escapeHtml(query)}</strong> in TWiki (${pagesSearched} pages) or Jira.${pagesErrored > 0 ? ` (${pagesErrored} TWiki pages could not be loaded)` : ''}</div>`;
+        } else {
+          resultsEl.innerHTML = renderJiraSearchResults(jiraOut.results, query, pagesSearched, pagesErrored);
+        }
+      } else {
+        let html = `<div class="search-summary"><strong>${allResults.length}</strong> result${allResults.length !== 1 ? 's' : ''} found across <strong>${pagesSearched}</strong> pages${pagesErrored > 0 ? ` (${pagesErrored} failed)` : ''}</div>`;
+        for (const r of allResults) {
+          html += `<div class="search-result-card">`;
+          html += `<div class="search-result-page">&#128197; <a href="${escapeHtml(r.pageUrl)}" target="_blank">${escapeHtml(r.reportDate)}</a></div>`;
+          html += `<div class="search-result-sig">${escapeHtml(r.signature)}</div>`;
+          html += `<div class="search-result-meta">`;
+          if (r.crdbLink) {
+            html += `<span>&#128279; <a href="${escapeHtml(r.crdbLink)}" target="_blank">${escapeHtml(r.crdbLink.length > 80 ? r.crdbLink.slice(0, 80) + '...' : r.crdbLink)}</a></span>`;
+          }
+          if (r.bugId) {
+            // Determine bug badge color from status
+            const sl = (r.status || '').toLowerCase();
+            let bugBadgeCls = 'badge-bug-default';
+            if (sl.includes('open') || sl.includes('new') || sl.includes('in progress') || sl.includes('assigned') || sl.includes('wip') || sl.includes('debug')) {
+              bugBadgeCls = 'badge-bug-open';
+            } else if (sl.includes('implement') || sl.includes('closed') || sl.includes('resolved') || sl.includes('done') || sl.includes('fixed')) {
+              bugBadgeCls = 'badge-bug-impl';
+            } else if (sl.includes('reject') || sl.includes('won\'t fix') || sl.includes('invalid') || sl.includes('duplicate')) {
+              bugBadgeCls = 'badge-bug-rejected';
+            }
+            // Build bug tracking URL (same Jira base used in Report tab)
+            const bugUrl = `https://amd.atlassian.net/browse/${encodeURIComponent(r.bugId)}`;
+            html += `<span class="badge ${bugBadgeCls}">&#128030; <a href="${escapeHtml(bugUrl)}" target="_blank">Bug: ${escapeHtml(r.bugId)}</a></span>`;
+          } else {
+            html += `<span class="badge badge-no-bug">No bug filed</span>`;
+          }
+          if (r.engineer) {
+            html += `<span>&#128100; ${escapeHtml(r.engineer)}</span>`;
+          }
+          if (r.status) {
+            const sl2 = (r.status || '').toLowerCase();
+            let statusCls = '';
+            if (sl2.includes('open') || sl2.includes('new') || sl2.includes('in progress') || sl2.includes('assigned') || sl2.includes('wip') || sl2.includes('debug')) {
+              statusCls = 'search-status-open';
+            } else if (sl2.includes('implement') || sl2.includes('closed') || sl2.includes('resolved') || sl2.includes('done') || sl2.includes('fixed')) {
+              statusCls = 'search-status-impl';
+            } else if (sl2.includes('reject') || sl2.includes('won\'t fix') || sl2.includes('invalid') || sl2.includes('duplicate')) {
+              statusCls = 'search-status-rejected';
+            }
+            html += `<span class="search-status ${statusCls}">Status: ${escapeHtml(r.status)}</span>`;
+          }
+          html += `</div></div>`;
+        }
+        resultsEl.innerHTML = html;
+      }
+    }
+
+    /* ── ADF (Atlassian Document Format) → plain text helper ── */
+    function extractAdfText(node) {
+      if (!node) return '';
+      if (typeof node === 'string') return node;
+      if (node.type === 'text') return node.text || '';
+      if (Array.isArray(node.content)) return node.content.map(extractAdfText).join('');
+      return '';
+    }
+
+    /* ── Jira Search Fallback ── */
+    async function searchJiraFallback(query, progressEl) {
+      if (!settings.jiraEmail || !settings.jiraToken) {
+        return { results: [], error: 'no-creds' };
+      }
+      progressEl.classList.remove('hidden');
+      progressEl.innerHTML = 'Searching Jira...';
+
+      const jql = `text ~ "${query.replace(/"/g, '\\"')}" ORDER BY updated DESC`;
+      const searchUrl = `https://amd.atlassian.net/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=summary,status,assignee,updated,comment,priority&maxResults=25`;
+
+      try {
+        const resp = await fetch(`/proxy?url=${encodeURIComponent(searchUrl)}`, {
+          headers: { 'X-Jira-Auth': btoa(`${settings.jiraEmail}:${settings.jiraToken}`) }
+        });
+        progressEl.classList.add('hidden');
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => '');
+          console.warn('Jira search failed:', resp.status, errText);
+          return { results: [], error: 'api-error', status: resp.status, detail: errText };
+        }
+        const data = await resp.json();
+        console.log('Jira search response:', data.total, 'total results,', (data.issues || []).length, 'returned');
+        if (!data.issues || data.issues.length === 0) return { results: [], error: null };
+
+        const results = [];
+        for (const issue of data.issues) {
+          try {
+            const f = issue.fields || {};
+            // v3 API: comment body is ADF (object), extract plain text
+            const comments = (f.comment && f.comment.comments) || [];
+            let lastComment = '';
+            if (comments.length > 0) {
+              const raw = comments[comments.length - 1].body;
+              if (typeof raw === 'string') {
+                lastComment = raw;
+              } else if (raw && raw.content) {
+                lastComment = extractAdfText(raw);
+              }
+            }
+            if (lastComment.length > 200) lastComment = lastComment.slice(0, 200) + '...';
+            results.push({
+              key: issue.key,
+              summary: typeof f.summary === 'string' ? f.summary : (f.summary && f.summary.content ? extractAdfText(f.summary) : String(f.summary || '')),
+              status: (f.status && f.status.name) || '',
+              assignee: (f.assignee && f.assignee.displayName) || 'Unassigned',
+              priority: (f.priority && f.priority.name) || '',
+              updated: f.updated || '',
+              lastComment: lastComment,
+              url: `https://amd.atlassian.net/browse/${issue.key}`
+            });
+          } catch (mapErr) {
+            console.warn('Jira search: failed to parse issue', issue.key, mapErr);
+          }
+        }
+        return { results, error: null };
+      } catch (e) {
+        progressEl.classList.add('hidden');
+        console.warn('Jira search error:', e);
+        return { results: [], error: 'network', detail: e.message };
+      }
+    }
+
+    function renderJiraSearchResults(jiraResults, query, pagesSearched, pagesErrored) {
+      // Sort by updated time, most recent first
+      jiraResults.sort((a, b) => new Date(b.updated) - new Date(a.updated));
+      let html = `<div class="search-summary">No TWiki results across <strong>${pagesSearched}</strong> pages${pagesErrored > 0 ? ` (${pagesErrored} failed)` : ''}. Found <strong>${jiraResults.length}</strong> Jira result${jiraResults.length !== 1 ? 's' : ''} for <strong>${escapeHtml(query)}</strong>:</div>`;
+      html += `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">`;
+      for (const r of jiraResults) {
+        const sl = r.status.toLowerCase();
+        let bugBadgeCls = 'badge-bug-default';
+        if (sl.includes('open') || sl.includes('new') || sl.includes('in progress') || sl.includes('assigned') || sl.includes('to do')) {
+          bugBadgeCls = 'badge-bug-open';
+        } else if (sl.includes('done') || sl.includes('closed') || sl.includes('resolved') || sl.includes('fixed') || sl.includes('implement')) {
+          bugBadgeCls = 'badge-bug-impl';
+        } else if (sl.includes('reject') || sl.includes('won\'t') || sl.includes('invalid') || sl.includes('duplicate')) {
+          bugBadgeCls = 'badge-bug-rejected';
+        }
+        html += `<span class="badge ${bugBadgeCls}"><a href="${escapeHtml(r.url)}" target="_blank" style="color:inherit;text-decoration:none;">${escapeHtml(r.key)}</a></span>`;
+      }
+      html += `</div>`;
+      return html;
+    }
+
+    function parseTWikiForSignature(doc, query, pageUrl, reportDate) {
+      const results = [];
+      const lowerQuery = normalizeText(query).toLowerCase();
+      const queryWords = lowerQuery.split(/\s+/).filter(w => w.length > 2);
+
+      // Helper: check if text matches the query (exact or all words)
+      function textMatches(text) {
+        const t = normalizeText(text).toLowerCase();
+        if (t.includes(lowerQuery)) return true;
+        if (queryWords.length > 0 && queryWords.every(w => t.includes(w))) return true;
+        return false;
+      }
+
+      // Strategy: TWiki HTML varies — try multiple approaches
+
+      // Approach 1: Search all container elements (tr, td, div, p, li, span, dd, dt)
+      const containers = doc.querySelectorAll('tr, td, th, div, p, li, span, dd, dt, pre');
+      const matchedElements = [];
+      for (const el of containers) {
+        const txt = el.textContent || '';
+        if (!textMatches(txt)) continue;
+        // Only keep "leaf-ish" matches — skip if a child already matched
+        let childAlreadyMatched = false;
+        for (const m of matchedElements) {
+          if (el.contains(m)) { childAlreadyMatched = true; break; }
+        }
+        if (childAlreadyMatched) continue;
+        // Remove parent duplicates (this element is more specific)
+        for (let j = matchedElements.length - 1; j >= 0; j--) {
+          if (matchedElements[j].contains(el)) matchedElements.splice(j, 1);
+        }
+        matchedElements.push(el);
+      }
+
+      for (const el of matchedElements) {
+        // Look for context: walk up to find a larger container for link/bugId extraction
+        let contextEl = el;
+        // Walk up to a table row, list item, or large div for context
+        let parent = el.parentElement;
+        for (let up = 0; up < 5 && parent; up++) {
+          const tag = parent.tagName;
+          if (tag === 'TR' || tag === 'LI' || tag === 'DL' ||
+              (tag === 'DIV' && parent.textContent.length < 2000) ||
+              (tag === 'TABLE' && parent.textContent.length < 2000)) {
+            contextEl = parent;
+            break;
+          }
+          parent = parent.parentElement;
+        }
+
+        // Extract CRDB links from the matched element and its context
+        let crdbLink = '';
+        let bugId = '';
+        let engineer = '';
+        let sigName = query;
+        let status = '';
+
+        // Search both the matched element and its context parent for links
+        const searchEls = [el];
+        if (contextEl !== el) searchEls.push(contextEl);
+        // Also check siblings (next/prev) since info might be in adjacent cells
+        if (el.nextElementSibling) searchEls.push(el.nextElementSibling);
+        if (el.previousElementSibling) searchEls.push(el.previousElementSibling);
+        // If in a table row, check all cells in the row
+        const parentRow = el.closest('tr');
+        if (parentRow) searchEls.push(parentRow);
+
+        for (const searchEl of searchEls) {
+          const links = searchEl.querySelectorAll('a[href]');
+          for (const link of links) {
+            const href = link.getAttribute('href') || '';
+            if (href.includes('crdb3.amd.com') && !crdbLink) {
+              crdbLink = href;
+              // If this link's text matches the query, use it as the signature name
+              if (textMatches(link.textContent || '')) {
+                sigName = normalizeText(link.textContent.trim()) || query;
+              }
+            }
+          }
+
+          // Bug ID patterns
+          const searchText = searchEl.textContent || '';
+          const bugMatches = searchText.match(/([A-Z][A-Z0-9]+-\d+)/gi);
+          if (bugMatches) {
+            for (const bm of bugMatches) {
+              if (!bm.toLowerCase().includes('ovl_') && !bugId) {
+                bugId = bm.toUpperCase();
+              }
+            }
+          }
+
+          // Status keywords
+          if (!status) {
+            const statusKws = ['debug in progress', 'debug done', 'debugged', 'wip',
+                               'new', 'in progress', 'closed', 'resolved', 'open', 'assigned'];
+            const st = normalizeText(searchText).toLowerCase();
+            for (const kw of statusKws) {
+              if (st.includes(kw)) { status = kw.charAt(0).toUpperCase() + kw.slice(1); break; }
+            }
+          }
+        }
+
+        // Get best signature name from the matched element
+        if (sigName === query) {
+          // Try to get a more specific name from a link
+          const sigLinks = el.querySelectorAll('a[href*="crdb3.amd.com"]');
+          if (sigLinks.length > 0) {
+            crdbLink = sigLinks[0].getAttribute('href') || crdbLink;
+            const linkText = normalizeText(sigLinks[0].textContent.trim());
+            if (linkText) sigName = linkText;
+          } else {
+            // Use the matched element's text (trimmed)
+            const t = normalizeText(el.textContent.trim());
+            if (t.length > 0 && t.length < 300) sigName = t;
+          }
+        }
+
+        results.push({
+          signature: sigName,
+          crdbLink: crdbLink,
+          bugId: bugId,
+          engineer: engineer,
+          status: status,
+          pageUrl: pageUrl,
+          reportDate: reportDate
+        });
+      }
+
+      // Approach 2: Fallback — if no results from DOM, try raw HTML regex
+      if (results.length === 0) {
+        // Get full HTML string from doc
+        const fullHtml = doc.documentElement ? doc.documentElement.outerHTML : '';
+        // Find CRDB links near the query text
+        // Look for the query in text-stripped version, then find nearby links in raw HTML
+        const textOnly = normalizeText(doc.body ? doc.body.textContent : '').toLowerCase();
+        const queryIdx = textOnly.indexOf(lowerQuery);
+        if (queryIdx >= 0) {
+          // Found the text — extract any CRDB links from the page
+          const crdbPattern = /href=["'](https?:\/\/crdb3\.amd\.com[^"']*?)["']/gi;
+          let linkMatch;
+          let crdbLink = '';
+          while ((linkMatch = crdbPattern.exec(fullHtml)) !== null) {
+            crdbLink = linkMatch[1];
+            // If this link is near the query text, use it
+            const linkText = fullHtml.substring(
+              Math.max(0, linkMatch.index - 500),
+              Math.min(fullHtml.length, linkMatch.index + 500)
+            );
+            if (normalizeText(linkText).toLowerCase().includes(lowerQuery.substring(0, 20))) {
+              break; // This link is near the signature
+            }
+          }
+
+          // Extract bug ID near the query
+          const nearbyText = textOnly.substring(Math.max(0, queryIdx - 200), queryIdx + 500);
+          const bugMatch = nearbyText.match(/([a-z][a-z0-9]+-\d+)/i);
+          const bugId = bugMatch ? bugMatch[1].toUpperCase() : '';
+
+          results.push({
+            signature: query,
+            crdbLink: crdbLink,
+            bugId: bugId,
+            engineer: '',
+            status: '',
+            pageUrl: pageUrl,
+            reportDate: reportDate
+          });
+        }
+      }
+
+      // Deduplicate results from same page (same crdbLink or same signature if no link)
+      const seen = new Set();
+      return results.filter(r => {
+        const key = r.crdbLink || r.signature;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+  </script>
+</body>
+</html>

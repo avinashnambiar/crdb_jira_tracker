@@ -1,0 +1,65 @@
+@echo off
+title CRDB Status Tracker Server
+echo ============================================
+echo   CRDB Status Tracker
+echo ============================================
+echo.
+
+:: Check if Python is installed
+where python >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo   [ERROR] Python is not installed or not in PATH.
+    echo.
+    echo   Please install Python from https://www.python.org/downloads/
+    echo   During install, check "Add Python to PATH".
+    echo.
+    pause
+    exit /b 1
+)
+
+:: Check if server.py exists in the same folder as this bat file
+if not exist "%~dp0server.py" (
+    echo   [ERROR] server.py not found in %~dp0
+    echo   Make sure server.py is in the same folder as this bat file.
+    echo.
+    pause
+    exit /b 1
+)
+
+:: Kill any existing process on port 8091
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8091 " ^| findstr "LISTENING" 2^>nul') do (
+    echo   Stopping existing process on port 8091 (PID: %%a)...
+    taskkill /PID %%a /F >nul 2>&1
+    timeout /t 1 /nobreak >nul
+)
+
+:: Get machine hostname and IP
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
+    set IP=%%a
+    goto :found
+)
+:found
+set IP=%IP: =%
+
+echo   Local:   http://localhost:8091/crdbtracker.html
+echo   Network: http://%IP%:8091/crdbtracker.html
+echo.
+echo   Share the Network URL with your team!
+echo   Press Ctrl+C to stop the server.
+echo ============================================
+echo.
+
+:: Change to the script's directory (important when bat is run from elsewhere)
+cd /d "%~dp0"
+
+:: Auto-open browser after a short delay
+start "" cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:8091/crdbtracker.html"
+
+python server.py
+
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo   [ERROR] Server failed to start. See error above.
+    echo.
+)
+pause

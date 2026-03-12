@@ -1,0 +1,66 @@
+Subject: CRDB Status Tracker — Lightweight Tool for Weekly Debug Reports
+
+Hi Team,
+
+I've built a lightweight, zero-install tool to simplify CRDB signature tracking and weekly status report generation. Sharing it for anyone who'd find it useful.
+
+What is it?
+A single-file web app (HTML + JS) that runs locally in your browser. No extensions, no installs, no accounts — just drop the files in a folder and go.
+
+Getting Started
+1. Download the 3 files (crdbtracker.html, server.py, start-server.bat) into a folder
+2. Double-click start-server.bat — it launches the server and opens the app in your browser
+3. One-time setup: Go to the Setup tab and drag the "Track CRDB" bookmarklet to your bookmarks bar
+
+Key Features
+
+One-Click Tracking
+  - Click the bookmarklet on any CRDB simulation page — it auto-captures the signature name, bug ID, and project
+  - No copy-pasting URLs or manually filling forms
+
+Weekly Report Generation (TWiki / Plain Text)
+  - Auto-generates the weekly status report in TWiki format (ready to paste into the status page)
+  - Includes debugged/in-progress breakdown, bug counts (RTL vs Verif), bandwidth, OOO, and upcoming vacations
+  - Week runs Tuesday to Monday; report date defaults to the upcoming Monday
+
+Smart Bandwidth Calculation
+  - Set your allocated bandwidth (e.g., 50%)
+  - Mark OOO days (past absences) and upcoming vacation dates
+  - Effective bandwidth auto-calculates: allocated% × (workdays present / 5)
+  - Vacation dates that fall within the report week automatically count as OOO
+
+Carry Forward
+  - In-progress signatures from previous weeks automatically carry forward into the current week's report
+  - No need to re-add them — they show up with a purple "Carried Forward" badge
+
+OOO & Vacation Tracking
+  - OOO dates: past absences (today or earlier)
+  - Vacation dates: future planned leaves — persist across sessions, auto-promote to OOO when they fall in the report week
+  - Both are stored locally and retained for 3 weeks
+
+Auto-Refresh Bug Data
+  - The tool checks CRDB pages every 12 hours for bug number updates
+  - Manual refresh button available anytime
+  - Uses your Windows Kerberos credentials — no password entry needed
+
+CSV History Log
+  - Download a complete history of all tracked signatures as a CSV file
+  - Grouped by week (Tue–Mon) — useful for metrics, reviews, or archival
+
+Data Portability
+  - Export/Import your data as JSON — easy to back up or move between machines
+  - All data stays in your browser's local storage (nothing sent to any server)
+
+Quick Week Navigation
+  - Prev Week / This Week / Next Week buttons for fast report date switching
+
+What You Need
+  - A modern browser (Chrome recommended)
+  - Python 3 (for the local server — already available on most machines)
+
+The tool is fully offline and private — your data never leaves your machine.
+
+Let me know if you have any questions or feedback!
+
+Thanks,
+Avinash
