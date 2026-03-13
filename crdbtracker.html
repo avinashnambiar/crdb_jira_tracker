@@ -964,8 +964,7 @@
         <div class="form-group">
           <label>Out of Office <span class="hint-label">(past dates only — days you were absent)</span></label>
           <div class="date-picker-row">
-            <input type="date" id="ooo-date-input" class="date-add-input" />
-            <button id="btn-add-ooo-date" class="btn btn-small" type="button">Add</button>
+            <input type="date" id="ooo-date-input" class="date-add-input" placeholder="Click to pick date" />
           </div>
           <div id="ooo-dates-list" class="selected-dates-list"></div>
         </div>
@@ -1642,9 +1641,9 @@
         document.getElementById('twiki-username').value = settings.engineerName;
       }
 
-      // OOO Add button
+      // OOO: auto-add when user picks a date from the calendar
       const oooInput = document.getElementById('ooo-date-input');
-      document.getElementById('btn-add-ooo-date').addEventListener('click', () => addOooDate());
+      oooInput.addEventListener('change', () => addOooDate());
       oooInput.addEventListener('click', () => { try { oooInput.showPicker(); } catch(e) {} });
       document.getElementById('ooo-dates-list').addEventListener('click', handleOooChipRemove);
 
