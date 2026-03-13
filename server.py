@@ -135,9 +135,16 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
 
                 curl_cmd.append(target_url)
 
+                # Hide console window when running under pythonw (no parent console)
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 0  # SW_HIDE
+
                 result = subprocess.run(
                     curl_cmd,
-                    capture_output=True, timeout=30
+                    capture_output=True, timeout=30,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    startupinfo=startupinfo
                 )
 
                 # Clean up temp file if created
