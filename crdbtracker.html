@@ -965,6 +965,7 @@
           <label>Out of Office <span class="hint-label">(past dates only — days you were absent)</span></label>
           <div class="date-picker-row">
             <input type="date" id="ooo-date-input" class="date-add-input" />
+            <button id="btn-add-ooo-date" class="btn btn-small" type="button">Add</button>
           </div>
           <div id="ooo-dates-list" class="selected-dates-list"></div>
         </div>
@@ -1284,8 +1285,8 @@
       renderJiraList();
       populateSettings();
       setDefaultReportDate();
-      renderDateChips('ooo');
-      renderDateChips('vacation');
+      try { renderOooChips(); } catch(e) { console.error('renderOooChips error:', e); }
+      try { renderVacationChips(); } catch(e) { console.error('renderVacationChips error:', e); }
       recalcEffectiveBandwidth();
       updateLastRefreshDisplay();
 
@@ -1294,23 +1295,20 @@
 
       // Refresh data when user switches back to this tab (picks up popup saves)
       // Invalidate Jira caches on focus so we get fresh data
+      // NOTE: Do NOT reload OOO/vacation dates on focus — it interferes with the date picker
       window.addEventListener('focus', () => {
         invalidateJiraCaches();
-        loadData();
+        loadData(true);
         renderSignatureList();
         renderJiraList();
-        renderDateChips('ooo');
-        renderDateChips('vacation');
         recalcEffectiveBandwidth();
       });
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
           invalidateJiraCaches();
-          loadData();
+          loadData(true);
           renderSignatureList();
           renderJiraList();
-          renderDateChips('ooo');
-          renderDateChips('vacation');
           recalcEffectiveBandwidth();
         }
       });
@@ -1404,7 +1402,7 @@
     }
 
     // ===== Data Layer =====
-    function loadData() {
+    function loadData(skipDates) {
       // Load signatures
       try {
         const rawSigs = localStorage.getItem(STORAGE_SIGS);
@@ -1429,16 +1427,14 @@
       // Auto-sync CRDB bug IDs to JIRA Tracker
       syncCrdbBugsToJiraTracker();
 
+      if (!skipDates) {
       // Load persisted OOO and vacation dates
       try {
         const rawOoo = localStorage.getItem(STORAGE_OOO);
         oooDates = rawOoo ? JSON.parse(rawOoo) : [];
+        // Always strip AMD holidays from user OOO — holidays are handled separately in bandwidth/report
+        oooDates = oooDates.filter(d => !AMD_HOLIDAY_DATES.has(d));
       } catch (e) { oooDates = []; }
-
-      // Remove any AMD holidays that were previously auto-added to OOO
-      const prevLen = oooDates.length;
-      oooDates = oooDates.filter(d => !AMD_HOLIDAY_DATES.has(d));
-      if (oooDates.length !== prevLen) saveOooDates();
 
       try {
         const rawVac = localStorage.getItem(STORAGE_VACATION);
@@ -1463,6 +1459,7 @@
       } catch (e) {
         console.error('Error during date cleanup:', e);
       }
+      } // end skipDates
 
       // Migration: add new fields to old entries
       try {
@@ -1601,6 +1598,12 @@
           btn.classList.add('active');
           document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
           localStorage.setItem('crdb-tracker-active-tab', btn.dataset.tab);
+          // Re-render date chips when switching to Report tab
+          if (btn.dataset.tab === 'report') {
+            renderOooChips();
+            renderVacationChips();
+            recalcEffectiveBandwidth();
+          }
         });
       });
       // Restore last active tab
@@ -1639,9 +1642,11 @@
         document.getElementById('twiki-username').value = settings.engineerName;
       }
 
+      // OOO Add button
       const oooInput = document.getElementById('ooo-date-input');
-      oooInput.addEventListener('change', () => addDateChip('ooo'));
+      document.getElementById('btn-add-ooo-date').addEventListener('click', () => addOooDate());
       oooInput.addEventListener('click', () => { try { oooInput.showPicker(); } catch(e) {} });
+      document.getElementById('ooo-dates-list').addEventListener('click', handleOooChipRemove);
 
       const vacStartInput = document.getElementById('vacation-date-start');
       const vacEndInput = document.getElementById('vacation-date-end');
@@ -1656,7 +1661,6 @@
       });
       document.getElementById('input-report-date').addEventListener('change', recalcEffectiveBandwidth);
 
-      document.getElementById('ooo-dates-list').addEventListener('click', handleDateChipRemove);
       document.getElementById('vacation-dates-list').addEventListener('click', handleDateChipRemove);
 
       // Settings Tab
@@ -2395,30 +2399,53 @@
       }
     }
 
-    // ===== Date Chip Helpers =====
-    function addDateChip(type) {
-      const inputId = 'ooo-date-input';
-      const input = document.getElementById(inputId);
+    // ===== OOO Date Helpers (rebuilt) =====
+    function addOooDate() {
+      const input = document.getElementById('ooo-date-input');
       const dateVal = input.value;
       if (!dateVal) return;
 
       const today = toLocalDateStr(new Date());
-
-      // OOO: only today or past dates (weekdays you were absent)
       if (dateVal > today) {
-        showStatus('OOO dates must be today or earlier (days you were absent).', 'error');
+        showStatus('OOO dates must be today or earlier.', 'error');
         input.value = '';
         return;
       }
-
-      if (oooDates.includes(dateVal)) { input.value = ''; return; }
+      if (oooDates.indexOf(dateVal) !== -1) { input.value = ''; return; }
 
       oooDates.push(dateVal);
       oooDates.sort();
       input.value = '';
       saveOooDates();
-      renderDateChips('ooo');
+      renderOooChips();
       recalcEffectiveBandwidth();
+    }
+
+    function removeOooDate(dateVal) {
+      oooDates = oooDates.filter(d => d !== dateVal);
+      saveOooDates();
+      renderOooChips();
+      recalcEffectiveBandwidth();
+    }
+
+    function renderOooChips() {
+      const container = document.getElementById('ooo-dates-list');
+      if (!container) return;
+      if (oooDates.length === 0) {
+        container.innerHTML = '<span style="color:var(--text-muted);font-size:12px;font-style:italic;">No OOO dates added</span>';
+        return;
+      }
+      container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:2px;">' + oooDates.length + ' date(s):</div>' +
+        oooDates.map(d => {
+          const display = formatShortDate(d);
+          return `<span class="date-chip">${display}<button class="date-chip-remove" data-ooo-date="${d}" title="Remove">&times;</button></span>`;
+        }).join('');
+    }
+
+    function handleOooChipRemove(e) {
+      const btn = e.target.closest('[data-ooo-date]');
+      if (!btn) return;
+      removeOooDate(btn.getAttribute('data-ooo-date'));
     }
 
     function addVacationRange() {
@@ -2473,7 +2500,7 @@
       vacationDates.sort();
       startInput.value = ''; endInput.value = '';
       saveVacationDates();
-      renderDateChips('vacation');
+      renderVacationChips();
       recalcEffectiveBandwidth();
     }
 
@@ -2482,25 +2509,26 @@
       if (!btn) return;
       const date = btn.dataset.date;
       const type = btn.dataset.type;
-      const arr = type === 'ooo' ? oooDates : vacationDates;
-      const idx = arr.indexOf(date);
-      if (idx !== -1) arr.splice(idx, 1);
-      // Persist
-      if (type === 'ooo') saveOooDates(); else saveVacationDates();
-      renderDateChips(type);
+      if (type !== 'vacation') return;
+      const idx = vacationDates.indexOf(date);
+      if (idx !== -1) vacationDates.splice(idx, 1);
+      saveVacationDates();
+      renderVacationChips();
       recalcEffectiveBandwidth();
     }
 
-    function renderDateChips(type) {
-      const arr = type === 'ooo' ? oooDates : vacationDates;
-      const container = document.getElementById(type === 'ooo' ? 'ooo-dates-list' : 'vacation-dates-list');
-      container.innerHTML = arr.map(d => {
-        const display = formatShortDate(d);
-        const holidayName = AMD_HOLIDAY_NAMES[d];
-        const label = holidayName ? `${display} — ${holidayName}` : display;
-        const chipStyle = holidayName ? 'background:var(--accent);color:var(--text-on-accent,#fff);' : '';
-        return `<span class="date-chip" style="${chipStyle}">${label}<button class="date-chip-remove" data-date="${d}" data-type="${type}" title="Remove">&times;</button></span>`;
-      }).join('');
+    function renderVacationChips() {
+      const container = document.getElementById('vacation-dates-list');
+      if (!container) return;
+      if (vacationDates.length === 0) {
+        container.innerHTML = '<span style="color:var(--text-muted);font-size:12px;font-style:italic;">No vacation dates added</span>';
+        return;
+      }
+      container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:2px;">' + vacationDates.length + ' date(s):</div>' +
+        vacationDates.map(d => {
+          const display = formatShortDate(d);
+          return `<span class="date-chip">${display}<button class="date-chip-remove" data-date="${d}" data-type="vacation" title="Remove">&times;</button></span>`;
+        }).join('');
     }
 
     function formatShortDate(dateStr) {
@@ -3159,8 +3187,8 @@
           saveSettings();
           populateSettings();
         }
-        if (data.oooDates) { oooDates = data.oooDates; saveOooDates(); renderDateChips('ooo'); }
-        if (data.vacationDates) { vacationDates = data.vacationDates; saveVacationDates(); renderDateChips('vacation'); }
+        if (data.oooDates) { oooDates = data.oooDates; saveOooDates(); renderOooChips(); }
+        if (data.vacationDates) { vacationDates = data.vacationDates; saveVacationDates(); renderVacationChips(); }
         if (data.jiraTickets) { jiraTickets = data.jiraTickets; saveJiraTickets(); }
         renderSignatureList();
         renderJiraList();
@@ -3188,8 +3216,8 @@
       renderSignatureList();
       renderJiraList();
       populateSettings();
-      renderDateChips('ooo');
-      renderDateChips('vacation');
+      renderOooChips();
+      renderVacationChips();
       recalcEffectiveBandwidth();
       showSettingsStatus('All data cleared.', 'success');
     }
