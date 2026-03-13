@@ -965,7 +965,6 @@
           <label>Out of Office <span class="hint-label">(past dates only — days you were absent)</span></label>
           <div class="date-picker-row">
             <input type="date" id="ooo-date-input" class="date-add-input" />
-            <button id="btn-add-ooo-date" class="btn btn-small" type="button">Add</button>
           </div>
           <div id="ooo-dates-list" class="selected-dates-list"></div>
         </div>
@@ -1436,18 +1435,10 @@
         oooDates = rawOoo ? JSON.parse(rawOoo) : [];
       } catch (e) { oooDates = []; }
 
-      // Auto-add AMD site holidays to OOO dates
-      let holidaysAdded = false;
-      AMD_HOLIDAYS_2026.forEach(h => {
-        if (!oooDates.includes(h.date)) {
-          oooDates.push(h.date);
-          holidaysAdded = true;
-        }
-      });
-      if (holidaysAdded) {
-        oooDates.sort();
-        saveOooDates();
-      }
+      // Remove any AMD holidays that were previously auto-added to OOO
+      const prevLen = oooDates.length;
+      oooDates = oooDates.filter(d => !AMD_HOLIDAY_DATES.has(d));
+      if (oooDates.length !== prevLen) saveOooDates();
 
       try {
         const rawVac = localStorage.getItem(STORAGE_VACATION);
@@ -1649,7 +1640,6 @@
       }
 
       const oooInput = document.getElementById('ooo-date-input');
-      document.getElementById('btn-add-ooo-date').addEventListener('click', () => addDateChip('ooo'));
       oooInput.addEventListener('change', () => addDateChip('ooo'));
       oooInput.addEventListener('click', () => { try { oooInput.showPicker(); } catch(e) {} });
 
@@ -2519,14 +2509,15 @@
     }
 
     // Get all OOO-equivalent dates in the report week:
-    // = manual OOO dates in the week + vacation dates that fall in the week
+    // = manual OOO dates + vacation dates + AMD holidays that fall in the week
     function getOooDatesInWeek(reportDate) {
       if (!reportDate) return [];
       const weekStart = reportDate;
       const weekEnd = getWeekEnd(reportDate);
       const manualOoo = oooDates.filter(d => d >= weekStart && d <= weekEnd);
       const vacAsOoo = vacationDates.filter(d => d >= weekStart && d <= weekEnd);
-      const merged = [...new Set([...manualOoo, ...vacAsOoo])];
+      const holidays = AMD_HOLIDAYS_2026.filter(h => h.date >= weekStart && h.date <= weekEnd).map(h => h.date);
+      const merged = [...new Set([...manualOoo, ...vacAsOoo, ...holidays])];
       merged.sort();
       return merged;
     }
