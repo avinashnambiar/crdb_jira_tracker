@@ -1106,9 +1106,22 @@
           &#128205; Track
         </a>
 
+        <button id="btn-copy-bookmarklet" class="btn btn-small" style="margin-top:8px;" title="Copy bookmarklet code to clipboard">&#128203; Copy Bookmarklet</button>
+        <span id="copy-bookmarklet-status" style="font-size:12px;color:var(--success);margin-left:8px;display:none;">Copied!</span>
+
         <p style="font-size:11px;color:var(--text-muted);">
           If your bookmarks bar is hidden, press <code>Ctrl+Shift+B</code> to show it.
         </p>
+        <details style="margin-top:6px;font-size:12px;color:var(--text-secondary);">
+          <summary style="cursor:pointer;">If drag doesn't work, create the bookmark manually</summary>
+          <ol style="margin-top:6px;padding-left:20px;line-height:1.8;">
+            <li>Click <strong>Copy Bookmarklet</strong> above</li>
+            <li>Right-click your bookmarks bar → <strong>Add page</strong> (or <strong>Add bookmark</strong>)</li>
+            <li>Name it <strong>Track</strong></li>
+            <li>In the <strong>URL</strong> field, paste the copied code</li>
+            <li>Click <strong>Save</strong></li>
+          </ol>
+        </details>
 
         <div class="how-it-works">
           <div class="how-step">
@@ -3375,6 +3388,27 @@
 
       const link = document.getElementById('bookmarklet-link');
       link.href = bookmarkletCode;
+
+      // Copy bookmarklet button
+      document.getElementById('btn-copy-bookmarklet').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(bookmarkletCode);
+          const status = document.getElementById('copy-bookmarklet-status');
+          status.style.display = 'inline';
+          setTimeout(() => { status.style.display = 'none'; }, 2500);
+        } catch (e) {
+          // Fallback
+          const ta = document.createElement('textarea');
+          ta.value = bookmarkletCode;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+          const status = document.getElementById('copy-bookmarklet-status');
+          status.style.display = 'inline';
+          setTimeout(() => { status.style.display = 'none'; }, 2500);
+        }
+      });
     }
 
     // ===== Utility Functions =====
