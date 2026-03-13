@@ -828,7 +828,13 @@
           </div>
           <div class="form-group">
             <label>Status Note</label>
-            <input type="text" id="input-status-note" placeholder="e.g. Known issue, same signature" />
+            <select id="input-status-note">
+              <option value="">-- Select --</option>
+              <option value="Known Issue, Same Signature">Known Issue, Same Signature</option>
+              <option value="Known Issue, Different Signature">Known Issue, Different Signature</option>
+              <option value="Yet to triage">Yet to triage</option>
+              <option value="Triaged">Triaged</option>
+            </select>
           </div>
           <div class="form-row">
             <div class="form-group form-half">
@@ -966,7 +972,9 @@
         <div class="form-group">
           <label>Upcoming Vacations <span class="hint-label">(future dates only)</span></label>
           <div class="date-picker-row">
-            <input type="date" id="vacation-date-input" class="date-add-input" />
+            <input type="date" id="vacation-date-start" class="date-add-input" title="Start date" />
+            <span style="color:var(--text-muted);font-size:13px;">to</span>
+            <input type="date" id="vacation-date-end" class="date-add-input" title="End date" />
             <button id="btn-add-vacation-date" class="btn btn-small" type="button">Add</button>
           </div>
           <div id="vacation-dates-list" class="selected-dates-list"></div>
@@ -1191,6 +1199,24 @@
     const STORAGE_JIRA_TICKETS = 'crdb-tracker-jira-tickets';
     const REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
+    // AMD Bangalore Site Holidays 2026
+    const AMD_HOLIDAYS_2026 = [
+      { date: '2026-01-15', name: 'Sankranti' },
+      { date: '2026-01-26', name: 'Republic Day' },
+      { date: '2026-03-04', name: 'Holi' },
+      { date: '2026-03-19', name: 'Ugadi / Gudi Padwa' },
+      { date: '2026-05-01', name: 'May Day / Buddha Purnima' },
+      { date: '2026-09-14', name: 'Ganesh Chaturthi' },
+      { date: '2026-10-02', name: 'Gandhi Jayanti' },
+      { date: '2026-10-20', name: 'Dussehra' },
+      { date: '2026-11-10', name: 'Diwali' },
+      { date: '2026-12-25', name: 'Christmas' },
+    ];
+
+    // Build a lookup set for holiday dates
+    const AMD_HOLIDAY_DATES = new Set(AMD_HOLIDAYS_2026.map(h => h.date));
+    const AMD_HOLIDAY_NAMES = Object.fromEntries(AMD_HOLIDAYS_2026.map(h => [h.date, h.name]));
+
     const DEFAULT_SETTINGS = {
       fullName: 'Avinash, K V',
       engineerName: '',
@@ -1410,6 +1436,19 @@
         oooDates = rawOoo ? JSON.parse(rawOoo) : [];
       } catch (e) { oooDates = []; }
 
+      // Auto-add AMD site holidays to OOO dates
+      let holidaysAdded = false;
+      AMD_HOLIDAYS_2026.forEach(h => {
+        if (!oooDates.includes(h.date)) {
+          oooDates.push(h.date);
+          holidaysAdded = true;
+        }
+      });
+      if (holidaysAdded) {
+        oooDates.sort();
+        saveOooDates();
+      }
+
       try {
         const rawVac = localStorage.getItem(STORAGE_VACATION);
         vacationDates = rawVac ? JSON.parse(rawVac) : [];
@@ -1614,10 +1653,11 @@
       oooInput.addEventListener('change', () => addDateChip('ooo'));
       oooInput.addEventListener('click', () => { try { oooInput.showPicker(); } catch(e) {} });
 
-      const vacInput = document.getElementById('vacation-date-input');
-      document.getElementById('btn-add-vacation-date').addEventListener('click', () => addDateChip('vacation'));
-      vacInput.addEventListener('change', () => addDateChip('vacation'));
-      vacInput.addEventListener('click', () => { try { vacInput.showPicker(); } catch(e) {} });
+      const vacStartInput = document.getElementById('vacation-date-start');
+      const vacEndInput = document.getElementById('vacation-date-end');
+      document.getElementById('btn-add-vacation-date').addEventListener('click', () => addVacationRange());
+      vacStartInput.addEventListener('click', () => { try { vacStartInput.showPicker(); } catch(e) {} });
+      vacEndInput.addEventListener('click', () => { try { vacEndInput.showPicker(); } catch(e) {} });
 
       document.getElementById('input-alloc-bandwidth').addEventListener('input', () => {
         settings.allocatedBandwidth = parseInt(document.getElementById('input-alloc-bandwidth').value) || 100;
@@ -1684,7 +1724,7 @@
       document.getElementById('input-crdb-link').value = '';
       document.getElementById('input-sig-name').value = '';
       document.getElementById('input-bug-no').value = '';
-      document.getElementById('input-status-note').value = '';
+      document.getElementById('input-status-note').selectedIndex = 0;
       document.getElementById('input-notes').value = '';
     }
 
@@ -1824,7 +1864,13 @@
               <option value="Verif" ${(sig.bugType || 'RTL') === 'Verif' ? 'selected' : ''}>Verif</option>
             </select>
           </td>
-          <td style="min-width:140px"><input class="sig-table-input" type="text" placeholder="Status note" value="${escapeHtml(sig.statusNote || '')}" data-action="update-status-note" data-sig-id="${sig.id}" /></td>
+          <td style="min-width:140px"><select class="sig-table-select" data-action="update-status-note" data-sig-id="${sig.id}">
+              <option value="" ${!sig.statusNote ? 'selected' : ''}>-- Select --</option>
+              <option value="Known Issue, Same Signature" ${sig.statusNote === 'Known Issue, Same Signature' ? 'selected' : ''}>Known Issue, Same Signature</option>
+              <option value="Known Issue, Different Signature" ${sig.statusNote === 'Known Issue, Different Signature' ? 'selected' : ''}>Known Issue, Different Signature</option>
+              <option value="Yet to triage" ${sig.statusNote === 'Yet to triage' ? 'selected' : ''}>Yet to triage</option>
+              <option value="Triaged" ${sig.statusNote === 'Triaged' ? 'selected' : ''}>Triaged</option>
+            </select></td>
           <td style="white-space:nowrap;color:var(--text-muted)">${dateStr}</td>
           <td class="col-actions">
             ${sig.url ? `<button class="sig-action-btn" data-action="open-link" data-sig-id="${sig.id}" title="Open CRDB link">&#128279;</button>` : ''}
@@ -1884,7 +1930,6 @@
       const id = el.dataset.sigId;
 
       if (action === 'update-bug') updateBug(id, el.value);
-      else if (action === 'update-status-note') updateStatusNote(id, el.value);
     }, true);
 
     // ===== Signature Actions =====
@@ -2362,7 +2407,7 @@
 
     // ===== Date Chip Helpers =====
     function addDateChip(type) {
-      const inputId = type === 'ooo' ? 'ooo-date-input' : 'vacation-date-input';
+      const inputId = 'ooo-date-input';
       const input = document.getElementById(inputId);
       const dateVal = input.value;
       if (!dateVal) return;
@@ -2370,28 +2415,75 @@
       const today = toLocalDateStr(new Date());
 
       // OOO: only today or past dates (weekdays you were absent)
-      if (type === 'ooo' && dateVal > today) {
+      if (dateVal > today) {
         showStatus('OOO dates must be today or earlier (days you were absent).', 'error');
         input.value = '';
         return;
       }
 
-      // Vacation: only future dates
-      if (type === 'vacation' && dateVal <= today) {
-        showStatus('Vacation dates must be in the future.', 'error');
-        input.value = '';
+      if (oooDates.includes(dateVal)) { input.value = ''; return; }
+
+      oooDates.push(dateVal);
+      oooDates.sort();
+      input.value = '';
+      saveOooDates();
+      renderDateChips('ooo');
+      recalcEffectiveBandwidth();
+    }
+
+    function addVacationRange() {
+      const startInput = document.getElementById('vacation-date-start');
+      const endInput = document.getElementById('vacation-date-end');
+      const startVal = startInput.value;
+      const endVal = endInput.value;
+
+      if (!startVal) {
+        showStatus('Please select a start date for vacation.', 'error');
         return;
       }
 
-      const arr = type === 'ooo' ? oooDates : vacationDates;
-      if (arr.includes(dateVal)) { input.value = ''; return; }
+      const today = toLocalDateStr(new Date());
+      // Use end date if provided, otherwise treat as single day
+      const effectiveEnd = endVal || startVal;
 
-      arr.push(dateVal);
-      arr.sort();
-      input.value = '';
-      // Persist
-      if (type === 'ooo') saveOooDates(); else saveVacationDates();
-      renderDateChips(type);
+      if (startVal <= today && effectiveEnd <= today) {
+        showStatus('Vacation dates must be in the future.', 'error');
+        startInput.value = ''; endInput.value = '';
+        return;
+      }
+
+      if (effectiveEnd < startVal) {
+        showStatus('End date must be on or after start date.', 'error');
+        return;
+      }
+
+      // Generate all dates between start and end (inclusive), skip weekends
+      const cur = new Date(startVal + 'T00:00:00');
+      const end = new Date(effectiveEnd + 'T00:00:00');
+      let added = 0;
+      while (cur <= end) {
+        const day = cur.getDay();
+        // Skip weekends (0=Sun, 6=Sat)
+        if (day !== 0 && day !== 6) {
+          const ds = toLocalDateStr(cur);
+          if (ds > today && !vacationDates.includes(ds)) {
+            vacationDates.push(ds);
+            added++;
+          }
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      if (added === 0) {
+        showStatus('No new future weekday dates to add in that range.', 'error');
+        startInput.value = ''; endInput.value = '';
+        return;
+      }
+
+      vacationDates.sort();
+      startInput.value = ''; endInput.value = '';
+      saveVacationDates();
+      renderDateChips('vacation');
       recalcEffectiveBandwidth();
     }
 
@@ -2414,13 +2506,16 @@
       const container = document.getElementById(type === 'ooo' ? 'ooo-dates-list' : 'vacation-dates-list');
       container.innerHTML = arr.map(d => {
         const display = formatShortDate(d);
-        return `<span class="date-chip">${display}<button class="date-chip-remove" data-date="${d}" data-type="${type}" title="Remove">&times;</button></span>`;
+        const holidayName = AMD_HOLIDAY_NAMES[d];
+        const label = holidayName ? `${display} — ${holidayName}` : display;
+        const chipStyle = holidayName ? 'background:var(--accent);color:var(--text-on-accent,#fff);' : '';
+        return `<span class="date-chip" style="${chipStyle}">${label}<button class="date-chip-remove" data-date="${d}" data-type="${type}" title="Remove">&times;</button></span>`;
       }).join('');
     }
 
     function formatShortDate(dateStr) {
       const d = new Date(dateStr + 'T00:00:00');
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
     }
 
     // Get all OOO-equivalent dates in the report week:
@@ -2453,7 +2548,13 @@
     function formatOooDatesForReport(reportDate) {
       const weekOoo = getOooDatesInWeek(reportDate);
       if (weekOoo.length === 0) return '';
-      return `${weekOoo.length} ED (${weekOoo.map(formatShortDate).join(', ')})`;
+      const parts = weekOoo.map(d => {
+        const display = formatShortDate(d);
+        const holidayName = AMD_HOLIDAY_NAMES[d];
+        const reason = holidayName ? 'AMD Holiday' : 'OOO';
+        return `${display} -${reason}`;
+      });
+      return `${weekOoo.length} ED (${parts.join(', ')})`;
     }
 
     function formatVacationDatesForReport(reportDate) {
