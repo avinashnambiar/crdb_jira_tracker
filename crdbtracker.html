@@ -824,7 +824,7 @@
           </div>
           <div class="form-group">
             <label>Jira Bug ID (optional)</label>
-            <input type="text" id="input-bug-no" placeholder="e.g. DEPTRTVF-31950" />
+            <input type="text" id="input-bug-no" placeholder="e.g. PROJECT-12345" />
           </div>
           <div class="form-group">
             <label>Status Note</label>
@@ -902,7 +902,7 @@
           <summary>&#43; Add Jira ticket manually</summary>
           <div class="form-group">
             <label>Jira URL or Ticket ID</label>
-            <input type="text" id="input-jira-url" placeholder="https://amd.atlassian.net/browse/DEPTRTVF-31950 or DEPTRTVF-31950" />
+            <input type="text" id="input-jira-url" placeholder="https://amd.atlassian.net/browse/PROJECT-12345 or PROJECT-12345" />
           </div>
           <button id="btn-add-jira" class="btn btn-secondary btn-full" onclick="addJiraTicketManual()">Add Ticket</button>
         </details>
@@ -937,7 +937,7 @@
       <div class="report-options">
         <div class="form-group">
           <label>Full Name (as shown on TWiki)</label>
-          <input type="text" id="input-engineer-name" placeholder="e.g. Avinash, K V" />
+          <input type="text" id="input-engineer-name" placeholder="e.g. Last, First M" />
         </div>
         <div class="form-group">
           <label id="report-week-label">Report Week (Monday)</label>
@@ -1012,7 +1012,7 @@
           <div class="form-row">
             <div class="form-group form-half">
               <label>TWiki Username <span class="hint-label">(Windows username, no AMD\ prefix)</span></label>
-              <input type="text" id="twiki-username" placeholder="e.g. avinaskv" />
+              <input type="text" id="twiki-username" placeholder="e.g. jdoe" />
             </div>
             <div class="form-group form-half">
               <label>TWiki Password</label>
@@ -1047,15 +1047,15 @@
     <div class="tab-content" id="tab-settings">
       <div class="form-group">
         <label>Full Name (for TWiki heading)</label>
-        <input type="text" id="setting-full-name" placeholder="e.g. Avinash, K V" />
+        <input type="text" id="setting-full-name" placeholder="e.g. Last, First M" />
       </div>
       <div class="form-group">
         <label>Alias / Username</label>
-        <input type="text" id="setting-eng-name" placeholder="e.g. avinaskv" />
+        <input type="text" id="setting-eng-name" placeholder="e.g. jdoe" />
       </div>
       <div class="form-group">
         <label>TWiki Base URL</label>
-        <input type="text" id="setting-twiki-url" value="https://twiki.amd.com/twiki/bin/view/MGDVerif/MGDCoreDebugIdcDetailedStatus" />
+        <input type="text" id="setting-twiki-url" placeholder="https://twiki.amd.com/twiki/bin/view/..." />
       </div>
       <div class="form-group">
         <label>Report Day (day reports are collected)</label>
@@ -1218,9 +1218,9 @@
     const AMD_HOLIDAY_NAMES = Object.fromEntries(AMD_HOLIDAYS_2026.map(h => [h.date, h.name]));
 
     const DEFAULT_SETTINGS = {
-      fullName: 'Avinash, K V',
+      fullName: '',
       engineerName: '',
-      twikiBaseUrl: 'https://twiki.amd.com/twiki/bin/view/MGDVerif/MGDCoreDebugIdcDetailedStatus',
+      twikiBaseUrl: '',
       reportDay: 1, // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
       allocatedBandwidth: 100
     };
@@ -1830,7 +1830,7 @@
         } else {
           bugCell = sig.bugNo ? `<span class="badge badge-no-bug">${escapeHtml(sig.bugNo)}</span>` : '';
         }
-        bugCell += `<input class="sig-table-input" type="text" placeholder="DEPTRTVF-31950" value="${escapeHtml(sig.bugNo || '')}" data-action="update-bug" data-sig-id="${sig.id}" style="margin-top:${sig.bugNo ? '4px' : '0'};" />`;
+        bugCell += `<input class="sig-table-input" type="text" placeholder="PROJECT-12345" value="${escapeHtml(sig.bugNo || '')}" data-action="update-bug" data-sig-id="${sig.id}" style="margin-top:${sig.bugNo ? '4px' : '0'};" />`;
 
         // Jira status cell
         let jiraCell = '';
@@ -2092,7 +2092,7 @@
       const inp = document.getElementById('input-jira-url');
       const key = extractJiraKey(inp.value);
       if (!key) {
-        showJiraMsg('Enter a valid Jira URL or ticket ID (e.g. DEPTRTVF-31950)', 'error');
+        showJiraMsg('Enter a valid Jira URL or ticket ID (e.g. PROJECT-12345)', 'error');
         return;
       }
       if (jiraTickets.some(t => t.key === key)) {
