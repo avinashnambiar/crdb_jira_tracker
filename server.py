@@ -185,23 +185,6 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
 
                 print(f'[proxy] Response: {status_code}, body size: {len(html)} bytes')
 
-                # DEBUG: Log first CRDB API responses for debugging
-                if is_crdb_api and status_code == 200 and len(html) > 100:
-                    debug_dir = os.path.join(DIRECTORY, '_debug')
-                    os.makedirs(debug_dir, exist_ok=True)
-                    if 'debug_records' in target_url:
-                        debug_file = os.path.join(debug_dir, 'debug_records.json')
-                        if not os.path.exists(debug_file):
-                            with open(debug_file, 'wb') as df:
-                                df.write(html)
-                            print(f'[proxy] DEBUG: Wrote debug_records response ({len(html)}b) to {debug_file}')
-                    elif 'simulations' in target_url and 'token' not in target_url:
-                        debug_file = os.path.join(debug_dir, 'simulation.json')
-                        if not os.path.exists(debug_file):
-                            with open(debug_file, 'wb') as df:
-                                df.write(html)
-                            print(f'[proxy] DEBUG: Wrote simulation response ({len(html)}b) to {debug_file}')
-
                 if status_code >= 400:
                     self.send_response(status_code)
                     self.send_header('Access-Control-Allow-Origin', '*')

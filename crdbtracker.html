@@ -3375,20 +3375,14 @@
 
       // Try to get CRDB API token
       let crdbToken = null;
-      let _authDiag = '';
       if (settings.crdbUsername && settings.crdbPassword) {
         if (progressEl) progressEl.innerHTML = 'Authenticating to CRDB...';
         try {
           crdbToken = await getCrdbToken();
-          _authDiag = crdbToken ? 'token OK' : 'token null (login failed)';
         } catch (e) {
-          _authDiag = 'auth error: ' + e.message;
           console.warn('CRDB auth failed:', e);
         }
-      } else {
-        _authDiag = `no creds (user=${!!settings.crdbUsername} pass=${!!settings.crdbPassword})`;
       }
-      console.log('[CRDB refresh] Auth:', _authDiag);
 
       let updated = 0, errors = 0, unchanged = 0;
       const results = [];
@@ -3399,9 +3393,7 @@
 
         try {
           let newBug = '';
-          let _diag = '';
           const parsed = extractProjectAndUuid(sig.url);
-          _diag = `url=${sig.url.slice(0, 80)} parsed=${JSON.stringify(parsed)}`;
 
           if (crdbToken && parsed) {
             // Fetch simulation data and scan text fields for Jira ticket references
@@ -3409,7 +3401,6 @@
             const simResp = await fetch(`/proxy?url=${encodeURIComponent(simApiUrl)}`, {
               headers: { 'X-Crdb-Auth': crdbToken }
             });
-            _diag += ` simAPI:${simResp.status}`;
             if (simResp.ok) {
               const simData = await simResp.json();
               const simObj = (simData.results || [simData])[0] || {};
@@ -3420,15 +3411,12 @@
                 if (typeof val === 'string' && val.length > 2) textParts.push(val);
               }
               const allText = textParts.join(' ');
-              _diag += ` fields:${textParts.length}`;
               const bugPatterns = allText.match(/[A-Z]{2,}[A-Z0-9]*-\d+/g);
               if (bugPatterns) {
                 const uniqueBugs = [...new Set(bugPatterns.map(m => m.toUpperCase()))];
                 newBug = uniqueBugs.join(',');
-                _diag += ` bugs:${newBug}`;
               }
             }
-            console.log('[CRDB diag]', sig.name, _diag);
           }
 
           // Fallback: try HTML parsing (works if CRDB ever returns server-rendered pages)
@@ -3459,15 +3447,15 @@
             sig.debugStatus = 'debugged';
             sig.lastChecked = new Date().toISOString();
             updated++;
-            results.push({ name: sig.name, type: 'updated', detail: `${oldBug || 'none'} → ${cleanedBug}`, _diag });
+            results.push({ name: sig.name, type: 'updated', detail: `${oldBug || 'none'} → ${cleanedBug}` });
           } else {
             sig.lastChecked = new Date().toISOString();
             unchanged++;
-            results.push({ name: sig.name, type: 'same', _diag });
+            results.push({ name: sig.name, type: 'same' });
           }
         } catch (e) {
           errors++;
-          results.push({ name: sig.name, type: 'error', detail: e.message, _diag: 'exception' });
+          results.push({ name: sig.name, type: 'error', detail: e.message });
         }
 
         // Small delay between requests
@@ -3483,10 +3471,6 @@
 
       if (progressEl) {
         let summary = `<strong>Refresh complete:</strong> ${updated} updated, ${unchanged} unchanged, ${errors} failed`;
-        summary += `<div style="font-size:11px;color:#888;margin-top:4px;">Auth: ${escapeHtml(_authDiag)}</div>`;
-        // Show first diag result
-        const firstDiag = results.find(r => r._diag);
-        if (firstDiag) summary += `<div style="font-size:11px;color:#888;">Sample: ${escapeHtml(firstDiag._diag)}</div>`;
         if (updated > 0 || errors > 0) {
           summary += '<div style="margin-top:6px;max-height:300px;overflow-y:auto;">';
           for (const r of results) {
