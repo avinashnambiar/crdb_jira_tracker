@@ -41,7 +41,7 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'X-Jira-Auth, X-Twiki-Auth, Content-Type')
+        self.send_header('Access-Control-Allow-Headers', 'X-Jira-Auth, X-Twiki-Auth, X-Crdb-Auth, X-Crdb-Login, Content-Type')
         self.send_header('Access-Control-Max-Age', '86400')
         self.send_header('Content-Length', '0')
         self.end_headers()
@@ -74,7 +74,10 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
         # Determine auth method based on target host
         is_twiki = 'twiki.amd.com' in parsed.hostname
         is_jira = 'amd.atlassian.net' in parsed.hostname
+        is_crdb_api = 'crdb3.amd.com' in parsed.hostname and '/api/' in target_url
         twiki_auth = self.headers.get('X-Twiki-Auth', '') if is_twiki else ''
+        crdb_auth = self.headers.get('X-Crdb-Auth', '')  # Bearer token for CRDB API
+        crdb_login = self.headers.get('X-Crdb-Login', '')  # Flag for CRDB login POST
 
         try:
             # Use curl.exe for HTTP requests
@@ -104,11 +107,18 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
                             curl_cmd.extend(['--negotiate', '-u', ':'])
                     else:
                         curl_cmd.extend(['--negotiate', '-u', ':'])
+                elif is_crdb_api:
+                    # CRDB REST API — Accept JSON
+                    curl_cmd.extend(['-H', 'Accept: application/json'])
+                    if crdb_auth:
+                        # Use Bearer token for authenticated API calls
+                        curl_cmd.extend(['-H', f'Authorization: Bearer {crdb_auth}'])
+                    # For login POST (X-Crdb-Login), no auth header needed — creds in body
                 else:
                     curl_cmd.extend(['-H', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'])
 
-                if not is_jira:
-                    # Auth for non-Jira targets (Jira auth is handled above)
+                if not is_jira and not is_crdb_api:
+                    # Auth for non-API targets (Jira and CRDB API auth is handled above)
                     if is_twiki and twiki_auth:
                         # TWiki uses Basic auth — credentials passed from browser
                         import base64
@@ -118,7 +128,7 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
                         except Exception:
                             curl_cmd.extend(['--negotiate', '-u', ':'])
                     else:
-                        # CRDB uses Kerberos SSO
+                        # CRDB HTML pages use Kerberos SSO
                         curl_cmd.extend(['--negotiate', '-u', ':'])
 
                 # Add POST data if this is a POST request
@@ -177,15 +187,15 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
                     self.wfile.write(json.dumps({'error': f'HTTP {status_code}'}).encode())
                     return
 
-                # Detect content type — JSON for Jira API, HTML otherwise
+                # Detect content type — JSON for Jira/CRDB API, HTML otherwise
                 content_type = 'text/html; charset=utf-8'
-                if is_jira and (html.strip().startswith(b'{') or html.strip().startswith(b'[')):
+                if (is_jira or is_crdb_api) and (html.strip().startswith(b'{') or html.strip().startswith(b'[')):
                     content_type = 'application/json; charset=utf-8'
 
                 self.send_response(200)
                 self.send_header('Content-Type', content_type)
                 self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Access-Control-Allow-Headers', 'X-Jira-Auth, X-Twiki-Auth')
+                self.send_header('Access-Control-Allow-Headers', 'X-Jira-Auth, X-Twiki-Auth, X-Crdb-Auth, X-Crdb-Login')
                 self.send_header('Content-Length', str(len(html)))
                 self.end_headers()
                 self.wfile.write(html)

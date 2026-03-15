@@ -1070,6 +1070,17 @@
         <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Week runs from the day after the previous report day through the report day. E.g. Monday → Tue–Mon.</p>
       </div>
       <hr />
+      <h4 style="margin-top:8px;">CRDB Login</h4>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Required for refreshing bug data from CRDB. Use the same credentials you use to log into <a href="https://crdb3.amd.com" target="_blank" style="color:var(--accent);">crdb3.amd.com</a>.</p>
+      <div class="form-group">
+        <label>CRDB Username</label>
+        <input type="text" id="setting-crdb-username" placeholder="e.g. amdusername" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>CRDB Password</label>
+        <input type="password" id="setting-crdb-password" placeholder="Your CRDB password" autocomplete="current-password" />
+      </div>
+      <hr />
       <h4 style="margin-top:8px;">Jira Integration</h4>
       <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Required for auto-fetching bug status. Generate a token at <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" style="color:var(--accent);">Atlassian API Tokens</a>.</p>
       <div class="form-group">
@@ -1234,7 +1245,9 @@
       engineerName: '',
       twikiBaseUrl: '',
       reportDay: 1, // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-      allocatedBandwidth: 100
+      allocatedBandwidth: 100,
+      crdbUsername: '',
+      crdbPassword: ''
     };
 
     const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -2992,6 +3005,8 @@
       document.getElementById('setting-eng-name').value = settings.engineerName || '';
       document.getElementById('setting-twiki-url').value = settings.twikiBaseUrl;
       document.getElementById('setting-report-day').value = settings.reportDay ?? 1;
+      document.getElementById('setting-crdb-username').value = settings.crdbUsername || '';
+      document.getElementById('setting-crdb-password').value = settings.crdbPassword || '';
       document.getElementById('setting-jira-email').value = settings.jiraEmail || '';
       document.getElementById('setting-jira-token').value = settings.jiraToken || '';
       document.getElementById('input-engineer-name').value = settings.fullName || '';
@@ -3006,6 +3021,8 @@
       settings.engineerName = document.getElementById('setting-eng-name').value.trim();
       settings.twikiBaseUrl = document.getElementById('setting-twiki-url').value.trim();
       settings.reportDay = parseInt(document.getElementById('setting-report-day').value) || 1;
+      settings.crdbUsername = document.getElementById('setting-crdb-username').value.trim();
+      settings.crdbPassword = document.getElementById('setting-crdb-password').value.trim();
       settings.jiraEmail = document.getElementById('setting-jira-email').value.trim();
       settings.jiraToken = document.getElementById('setting-jira-token').value.trim();
       saveSettings();
@@ -3271,6 +3288,43 @@
       setInterval(() => refreshSignatures(true), REFRESH_INTERVAL_MS);
     }
 
+    // ===== CRDB API Auth =====
+    let _crdbToken = null;
+    let _crdbTokenExpiry = 0;
+
+    async function getCrdbToken() {
+      // Reuse cached token if still valid (tokens last ~30 min, refresh at 25 min)
+      if (_crdbToken && Date.now() < _crdbTokenExpiry) return _crdbToken;
+
+      if (!settings.crdbUsername || !settings.crdbPassword) return null;
+
+      const loginUrl = `/proxy?url=${encodeURIComponent('https://crdb3.amd.com/api/auth/login')}`;
+      const resp = await fetch(loginUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Crdb-Login': '1'  // Signal to proxy to forward as-is (no Kerberos)
+        },
+        body: JSON.stringify({ username: settings.crdbUsername, password: settings.crdbPassword })
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      if (data && data.access_token) {
+        _crdbToken = data.access_token;
+        _crdbTokenExpiry = Date.now() + 25 * 60 * 1000; // 25 min
+        return _crdbToken;
+      }
+      return null;
+    }
+
+    function extractProjectAndUuid(url) {
+      // Extract project (e.g. "pt.a") and simulation UUID from CRDB URL
+      // URL format: https://crdb3.amd.com/projects/{project}/simulations/{uuid}?...
+      const m = url.match(/projects\/([^/]+)\/simulations\/([a-f0-9-]+)/i);
+      if (m) return { project: m[1], uuid: m[2] };
+      return null;
+    }
+
     async function refreshSignatures(isAuto = false) {
       const sigsWithUrl = signatures.filter(s => s.url && s.url.includes('crdb3.amd.com'));
       if (sigsWithUrl.length === 0) {
@@ -3286,6 +3340,17 @@
         progressEl.innerHTML = `Refreshing 0/${sigsWithUrl.length}...`;
       }
 
+      // Try to get CRDB API token
+      let crdbToken = null;
+      if (settings.crdbUsername && settings.crdbPassword) {
+        if (progressEl) progressEl.innerHTML = 'Authenticating to CRDB...';
+        try {
+          crdbToken = await getCrdbToken();
+        } catch (e) {
+          console.warn('CRDB auth failed:', e);
+        }
+      }
+
       let updated = 0, errors = 0, unchanged = 0;
       const results = [];
 
@@ -3294,34 +3359,49 @@
         if (progressEl) progressEl.innerHTML = `Refreshing ${i + 1}/${sigsWithUrl.length}... <em>${escapeHtml(sig.name).slice(0, 40)}</em>`;
 
         try {
-          const proxyUrl = `/proxy?url=${encodeURIComponent(sig.url)}`;
-          const resp = await fetch(proxyUrl);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const html = await resp.text();
-
-          // Parse bug number from CRDB page HTML (same logic as bookmarklet)
           let newBug = '';
-          // Try table rows first
-          const rowRe = /<t[dh][^>]*>(.*?)<\/t[dh]>/gi;
-          const cells = [];
-          let m;
-          while ((m = rowRe.exec(html)) !== null) {
-            cells.push(m[1].replace(/<[^>]+>/g, '').trim());
-          }
-          for (let j = 0; j < cells.length - 1; j++) {
-            const label = cells[j].toLowerCase();
-            const val = cells[j + 1];
-            if ((label.includes('bug') && (label.includes('no') || label.includes('num') || label.includes('id')))) {
-              if (val && val !== '-' && val !== 'N/A' && val !== 'None') {
-                const jm = val.match(/([A-Z][A-Z0-9]+-\d+)/i);
-                if (jm) newBug = jm[1].toUpperCase();
+          const parsed = extractProjectAndUuid(sig.url);
+
+          if (crdbToken && parsed) {
+            // Use CRDB REST API (returns JSON with bug_number field)
+            const apiUrl = `https://crdb3.amd.com/api/crdb/projects/${parsed.project}/simulations/${parsed.uuid}`;
+            const proxyUrl = `/proxy?url=${encodeURIComponent(apiUrl)}`;
+            const resp = await fetch(proxyUrl, {
+              headers: { 'X-Crdb-Auth': crdbToken }
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              // The API may return the simulation object or an array
+              const sim = Array.isArray(data) ? data[0] : data;
+              if (sim) {
+                // Try common field names for bug number
+                const bugVal = sim.bug_number || sim.bugNumber || sim.bug_no || sim.jira_key || sim.jira_issue_key || sim.defect_id || '';
+                if (bugVal) {
+                  const jm = bugVal.match(/([A-Z][A-Z0-9]+-\d+)/i);
+                  if (jm) newBug = jm[1].toUpperCase();
+                  else if (/^\d+$/.test(bugVal.trim())) newBug = bugVal.trim();
+                }
               }
             }
           }
-          // Fallback: search full text
+
+          // Fallback: try HTML parsing (works if CRDB ever returns server-rendered pages)
           if (!newBug) {
-            const textMatch = html.replace(/<[^>]+>/g, ' ').match(/Bug\s*(?:No|Number|ID)[\s:]*([A-Z]+-\d+|\d+)/i);
-            if (textMatch) newBug = textMatch[1].toUpperCase();
+            const proxyUrl = `/proxy?url=${encodeURIComponent(sig.url)}`;
+            const resp = await fetch(proxyUrl);
+            if (resp.ok) {
+              const html = await resp.text();
+              // Only attempt parsing if it's not the SPA shell
+              if (!html.includes('<div id=app></div>') && !html.includes('<div id="app"></div>')) {
+                const textContent = html.replace(/<[^>]+>/g, ' ');
+                const bugMatch = textContent.match(/(?:Bug|Jira|Defect|Ticket)[\s:#]*([A-Z][A-Z0-9]+-\d+)/i);
+                if (bugMatch) newBug = bugMatch[1].toUpperCase();
+                if (!newBug) {
+                  const anyKey = textContent.match(/\b([A-Z][A-Z0-9]+-\d+)\b/);
+                  if (anyKey) newBug = anyKey[1].toUpperCase();
+                }
+              }
+            }
           }
 
           const cleanedBug = sanitizeBugNo(newBug);
@@ -3344,8 +3424,8 @@
           results.push({ name: sig.name, type: 'error', detail: e.message });
         }
 
-        // Small delay between requests to not hammer the server
-        if (i < sigsWithUrl.length - 1) await new Promise(r => setTimeout(r, 500));
+        // Small delay between requests
+        if (i < sigsWithUrl.length - 1) await new Promise(r => setTimeout(r, 300));
       }
 
       saveSignatures();
@@ -3358,12 +3438,12 @@
       if (progressEl) {
         let summary = `<strong>Refresh complete:</strong> ${updated} updated, ${unchanged} unchanged, ${errors} failed`;
         if (updated > 0 || errors > 0) {
-          summary += '<div style="margin-top:6px">';
+          summary += '<div style="margin-top:6px;max-height:300px;overflow-y:auto;">';
           for (const r of results) {
             if (r.type === 'updated') {
-              summary += `<div class="refresh-result refresh-result-updated">&#x2714; ${escapeHtml(r.name.slice(0, 40))}: ${escapeHtml(r.detail)}</div>`;
+              summary += `<div class="refresh-result refresh-result-updated">&#x2714; ${escapeHtml(r.name.slice(0, 50))}: ${escapeHtml(r.detail)}</div>`;
             } else if (r.type === 'error') {
-              summary += `<div class="refresh-result refresh-result-error">&#x2718; ${escapeHtml(r.name.slice(0, 40))}: ${escapeHtml(r.detail)}</div>`;
+              summary += `<div class="refresh-result refresh-result-error">&#x2718; ${escapeHtml(r.name.slice(0, 50))}: ${escapeHtml(r.detail)}</div>`;
             }
           }
           summary += '</div>';
