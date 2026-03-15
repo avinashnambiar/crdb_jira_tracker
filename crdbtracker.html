@@ -2662,9 +2662,9 @@
 
     function formatVacationDatesForReport(reportDate) {
       if (vacationDates.length === 0) return '';
-      // Only show vacation dates AFTER the report week ends
-      const weekEnd = reportDate ? getWeekEnd(reportDate) : toLocalDateStr(new Date());
-      const upcoming = vacationDates.filter(d => d > weekEnd);
+      // Show all vacation dates from today onwards
+      const today = toLocalDateStr(new Date());
+      const upcoming = vacationDates.filter(d => d >= today);
       if (upcoming.length === 0) return '';
       return upcoming.map(formatShortDate).join(', ');
     }
