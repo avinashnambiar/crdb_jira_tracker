@@ -881,6 +881,18 @@
           <option value="has-bug">Bug Assigned</option>
           <option value="resolved">Resolved</option>
         </select>
+        <select id="filter-jira-status" onchange="renderSignatureList()" title="Filter by Jira status">
+          <option value="all">All Jira Status</option>
+          <option value="open">Open / In Progress</option>
+          <option value="impl">Implemented / Fixed</option>
+          <option value="rejected">Rejected / Won't Fix</option>
+          <option value="none">No Jira Status</option>
+        </select>
+        <select id="filter-debug-status" onchange="renderSignatureList()" title="Filter by debug status">
+          <option value="all">All Debug Status</option>
+          <option value="in-progress">In Progress</option>
+          <option value="debugged">Debugged</option>
+        </select>
         <span id="sig-count" class="sig-count">0 tracked</span>
       </div>
 
@@ -1807,6 +1819,8 @@
       const container = document.getElementById('sig-list');
       const filter = document.getElementById('filter-status').value;
       const weekFilter = document.getElementById('filter-week').value;
+      const jiraFilter = document.getElementById('filter-jira-status').value;
+      const debugFilter = document.getElementById('filter-debug-status').value;
 
       let filtered = signatures;
 
@@ -1826,6 +1840,20 @@
       if (filter === 'no-bug') filtered = filtered.filter(s => s.status === 'no-bug');
       else if (filter === 'has-bug') filtered = filtered.filter(s => s.status === 'has-bug');
       else if (filter === 'resolved') filtered = filtered.filter(s => s.status === 'resolved');
+
+      // Jira status filter
+      if (jiraFilter !== 'all') {
+        filtered = filtered.filter(s => {
+          const cat = classifyJiraStatus(s.jiraStatus || '');
+          if (jiraFilter === 'none') return !s.jiraStatus;
+          return cat === jiraFilter;
+        });
+      }
+
+      // Debug status filter
+      if (debugFilter !== 'all') {
+        filtered = filtered.filter(s => (s.debugStatus || 'in-progress') === debugFilter);
+      }
 
       document.getElementById('sig-count').textContent = `${filtered.length} of ${signatures.length} tracked`;
 
