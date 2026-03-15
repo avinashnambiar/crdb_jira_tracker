@@ -30,6 +30,12 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
         else:
             super().do_GET()
 
+    def end_headers(self):
+        # Prevent caching of HTML files so code changes take effect immediately
+        if hasattr(self, 'path') and self.path.endswith('.html'):
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        super().end_headers()
+
     def do_POST(self):
         if self.path.startswith('/proxy?'):
             self.handle_proxy(method='POST')
@@ -178,6 +184,23 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
                     status_code = 200
 
                 print(f'[proxy] Response: {status_code}, body size: {len(html)} bytes')
+
+                # DEBUG: Log first CRDB API responses for debugging
+                if is_crdb_api and status_code == 200 and len(html) > 100:
+                    debug_dir = os.path.join(DIRECTORY, '_debug')
+                    os.makedirs(debug_dir, exist_ok=True)
+                    if 'debug_records' in target_url:
+                        debug_file = os.path.join(debug_dir, 'debug_records.json')
+                        if not os.path.exists(debug_file):
+                            with open(debug_file, 'wb') as df:
+                                df.write(html)
+                            print(f'[proxy] DEBUG: Wrote debug_records response ({len(html)}b) to {debug_file}')
+                    elif 'simulations' in target_url and 'token' not in target_url:
+                        debug_file = os.path.join(debug_dir, 'simulation.json')
+                        if not os.path.exists(debug_file):
+                            with open(debug_file, 'wb') as df:
+                                df.write(html)
+                            print(f'[proxy] DEBUG: Wrote simulation response ({len(html)}b) to {debug_file}')
 
                 if status_code >= 400:
                     self.send_response(status_code)

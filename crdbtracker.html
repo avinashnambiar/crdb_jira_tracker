@@ -1303,6 +1303,16 @@
       setupEventListeners();
       setupBookmarklet();
 
+      // Listen for storage changes from bookmarklet popups to auto-refresh
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'crdb_signatures' || e.key === 'crdb_jira_tickets') {
+          loadData(true);
+          renderSignatureList();
+          renderJiraList();
+          recalcEffectiveBandwidth();
+        }
+      });
+
       // Handle incoming bookmarklet data (fallback for non-popup)
       handleIncomingBookmarklet();
 
@@ -1387,10 +1397,26 @@
         return;
       }
 
-      // Check for duplicate
+      // Check for existing entry — update bug data if found
       if (url && signatures.some(s => s.url === url)) {
-        box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#9888;&#65039;</div><div style="font-size:14px;color:var(--warning);">Already tracked</div><div style="font-size:12px;color:var(--text-secondary);margin-top:6px;max-width:280px;word-break:break-all;">' + escapeHtml(name) + '</div>';
-        setTimeout(() => { try { window.close(); } catch(e){} }, 1800);
+        const existing = signatures.find(s => s.url === url);
+        const cleanedBug = sanitizeBugNo(bug);
+        if (cleanedBug && cleanedBug !== existing.bugNo) {
+          const oldBug = existing.bugNo || 'none';
+          existing.bugNo = cleanedBug;
+          existing.status = 'has-bug';
+          existing.debugStatus = 'debugged';
+          existing.lastChecked = new Date().toISOString();
+          if (name && name !== 'Unknown Signature' && name !== 'Unknown') existing.name = name;
+          saveSignatures();
+          if (/^[A-Z][A-Z0-9]+-\d+$/i.test(cleanedBug)) syncCrdbBugsToJiraTracker();
+          box.innerHTML = '<div style="font-size:32px;margin-bottom:8px;">&#128260;</div><div style="font-size:15px;font-weight:600;color:var(--success);">Updated!</div><div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">' + escapeHtml(oldBug) + ' &rarr; ' + escapeHtml(cleanedBug) + '</div>';
+        } else {
+          existing.lastChecked = new Date().toISOString();
+          saveSignatures();
+          box.innerHTML = '<div style="font-size:28px;margin-bottom:10px;">&#9989;</div><div style="font-size:14px;color:var(--text-secondary);">Up to date</div><div style="font-size:12px;color:var(--text-secondary);margin-top:4px;max-width:280px;word-break:break-all;">' + escapeHtml(name) + '</div>';
+        }
+        setTimeout(() => { try { window.close(); } catch(e){} }, 1500);
         return;
       }
 
@@ -3349,14 +3375,20 @@
 
       // Try to get CRDB API token
       let crdbToken = null;
+      let _authDiag = '';
       if (settings.crdbUsername && settings.crdbPassword) {
         if (progressEl) progressEl.innerHTML = 'Authenticating to CRDB...';
         try {
           crdbToken = await getCrdbToken();
+          _authDiag = crdbToken ? 'token OK' : 'token null (login failed)';
         } catch (e) {
+          _authDiag = 'auth error: ' + e.message;
           console.warn('CRDB auth failed:', e);
         }
+      } else {
+        _authDiag = `no creds (user=${!!settings.crdbUsername} pass=${!!settings.crdbPassword})`;
       }
+      console.log('[CRDB refresh] Auth:', _authDiag);
 
       let updated = 0, errors = 0, unchanged = 0;
       const results = [];
@@ -3367,46 +3399,36 @@
 
         try {
           let newBug = '';
+          let _diag = '';
           const parsed = extractProjectAndUuid(sig.url);
+          _diag = `url=${sig.url.slice(0, 80)} parsed=${JSON.stringify(parsed)}`;
 
           if (crdbToken && parsed) {
-            // Step 1: Fetch simulation to get the signature ID
+            // Fetch simulation data and scan text fields for Jira ticket references
             const simApiUrl = `https://crdb3.amd.com/api/crdb/projects/${parsed.project}/simulations/${parsed.uuid}`;
             const simResp = await fetch(`/proxy?url=${encodeURIComponent(simApiUrl)}`, {
               headers: { 'X-Crdb-Auth': crdbToken }
             });
+            _diag += ` simAPI:${simResp.status}`;
             if (simResp.ok) {
               const simData = await simResp.json();
-              const simResults = simData.results || (Array.isArray(simData) ? simData : [simData]);
-              const simObj = simResults[0];
-              // The simulation response uses dotted keys like "sig.id"
-              const sigId = simObj && (simObj['sig.id'] || simObj.sig_id || (simObj.sig && simObj.sig.id));
-              
-              if (sigId) {
-                // Step 2: Fetch debug records for this signature
-                const drApiUrl = `https://crdb3.amd.com/api/crdb/projects/${parsed.project}/signatures/${sigId}/debug_records`;
-                const drResp = await fetch(`/proxy?url=${encodeURIComponent(drApiUrl)}`, {
-                  headers: { 'X-Crdb-Auth': crdbToken }
-                });
-                if (drResp.ok) {
-                  const drData = await drResp.json();
-                  const debugRecords = drData.results || (Array.isArray(drData) ? drData : []);
-                  const bugNumbers = new Set();
-                  for (const rec of debugRecords) {
-                    const bn = rec.bug_number || rec['bug_number'] || '';
-                    if (bn && bn.trim() && bn.trim() !== '-' && bn.trim().toLowerCase() !== 'none') {
-                      for (const part of bn.split(',')) {
-                        const jm = part.trim().match(/([A-Z][A-Z0-9]+-\d+)/i);
-                        if (jm) bugNumbers.add(jm[1].toUpperCase());
-                      }
-                    }
-                  }
-                  if (bugNumbers.size > 0) {
-                    newBug = [...bugNumbers].join(',');
-                  }
-                }
+              const simObj = (simData.results || [simData])[0] || {};
+              // Check text fields that commonly contain bug references
+              const textParts = [];
+              for (const key of Object.keys(simObj)) {
+                const val = simObj[key];
+                if (typeof val === 'string' && val.length > 2) textParts.push(val);
+              }
+              const allText = textParts.join(' ');
+              _diag += ` fields:${textParts.length}`;
+              const bugPatterns = allText.match(/[A-Z]{2,}[A-Z0-9]*-\d+/g);
+              if (bugPatterns) {
+                const uniqueBugs = [...new Set(bugPatterns.map(m => m.toUpperCase()))];
+                newBug = uniqueBugs.join(',');
+                _diag += ` bugs:${newBug}`;
               }
             }
+            console.log('[CRDB diag]', sig.name, _diag);
           }
 
           // Fallback: try HTML parsing (works if CRDB ever returns server-rendered pages)
@@ -3437,15 +3459,15 @@
             sig.debugStatus = 'debugged';
             sig.lastChecked = new Date().toISOString();
             updated++;
-            results.push({ name: sig.name, type: 'updated', detail: `${oldBug || 'none'} → ${cleanedBug}` });
+            results.push({ name: sig.name, type: 'updated', detail: `${oldBug || 'none'} → ${cleanedBug}`, _diag });
           } else {
             sig.lastChecked = new Date().toISOString();
             unchanged++;
-            results.push({ name: sig.name, type: 'same' });
+            results.push({ name: sig.name, type: 'same', _diag });
           }
         } catch (e) {
           errors++;
-          results.push({ name: sig.name, type: 'error', detail: e.message });
+          results.push({ name: sig.name, type: 'error', detail: e.message, _diag: 'exception' });
         }
 
         // Small delay between requests
@@ -3461,6 +3483,10 @@
 
       if (progressEl) {
         let summary = `<strong>Refresh complete:</strong> ${updated} updated, ${unchanged} unchanged, ${errors} failed`;
+        summary += `<div style="font-size:11px;color:#888;margin-top:4px;">Auth: ${escapeHtml(_authDiag)}</div>`;
+        // Show first diag result
+        const firstDiag = results.find(r => r._diag);
+        if (firstDiag) summary += `<div style="font-size:11px;color:#888;">Sample: ${escapeHtml(firstDiag._diag)}</div>`;
         if (updated > 0 || errors > 0) {
           summary += '<div style="margin-top:6px;max-height:300px;overflow-y:auto;">';
           for (const r of results) {
@@ -3480,7 +3506,7 @@
       if (!isAuto) {
         if (updated > 0) showStatus(`Refreshed: ${updated} signature(s) updated with new bug data.`, 'success');
         else if (errors === sigsWithUrl.length) showStatus('Refresh failed — make sure you started the server with server.py (not plain http.server).', 'error');
-        else showStatus(`Refresh complete — no changes found. ${errors > 0 ? errors + ' failed.' : ''}`, 'success');
+        else showStatus('No bug data found via API. Tip: Use the bookmarklet on each CRDB page to update bug numbers.', 'warning');
       }
     }
 
@@ -3488,7 +3514,7 @@
       const trackerUrl = window.location.href.split('?')[0];
 
       // Bookmarklet code — runs on CRDB or Jira pages, extracts info, opens tracker
-      const bookmarkletCode = `javascript:void((function(){var loc=location.href;var isJira=loc.indexOf('atlassian.net/browse/')>-1||loc.indexOf('atlassian.net/jira/')>-1;var isCrdb=loc.indexOf('crdb3.amd.com')>-1;if(!isJira&&!isCrdb){alert('Not a CRDB or Jira page! Navigate to a CRDB simulation page or Jira ticket first.');return}if(isJira){var km=loc.match(/\\/browse\\/([A-Z][A-Z0-9]+-\\d+)/i)||loc.match(/\\/([A-Z][A-Z0-9]+-\\d+)/i);if(!km){alert('Could not extract Jira ticket key from URL.');return}var jk=km[1].toUpperCase();var q='?add=1&popup=1&source=jira&jirakey='+encodeURIComponent(jk);window.open('${encodeURI(trackerUrl)}'+q,'crdb-tracker-save','width=340,height=180,top=80,left='+(screen.width-400));var d=document.createElement('div');d.style.cssText='position:fixed;bottom:20px;right:20px;background:#1565c0;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-family:sans-serif;';d.textContent='\\u2713 Jira Tracked!';document.body.appendChild(d);setTimeout(function(){d.remove()},2500);return}var n='',b='',p='';try{var t=document.querySelector('h1,h2,.signature-name,[data-field=signature],.sim-name');if(t)n=t.textContent.trim();var at=document.body.innerText||'';var bm=at.match(/Bug\\s*(?:No|Number|ID)[\\s:]*([A-Z]+-\\d+|\\d+)/i);if(bm)b=bm[1];var rows=document.querySelectorAll('table tr');for(var r=0;r<rows.length;r++){var c=rows[r].querySelectorAll('td,th');for(var i=0;i<c.length-1;i++){var l=c[i].textContent.trim().toLowerCase();var v=c[i+1].textContent.trim();if(l.indexOf('bug')>-1&&(l.indexOf('no')>-1||l.indexOf('num')>-1||l.indexOf('id')>-1)){if(v&&v!=='-'&&v!=='N/A'&&v!=='None'){var jm=v.match(/([A-Z][A-Z0-9]+-\\d+)/i);if(jm)b=jm[1].toUpperCase()}}if(l.indexOf('signature')>-1||l.indexOf('sig name')>-1)n=v;if(l.indexOf('project')>-1)p=v}}}catch(e){}n=(n||document.title||'Unknown').replace(/\\s*:?\\s*Type\\s*\\(Click to clear sorting\\)/gi,'').trim();var q='?add=1&popup=1&source=crdb&url='+encodeURIComponent(location.href)+'&name='+encodeURIComponent(n)+'&bug='+encodeURIComponent(b)+'&project='+encodeURIComponent(p);window.open('${encodeURI(trackerUrl)}'+q,'crdb-tracker-save','width=340,height=180,top=80,left='+(screen.width-400));var d=document.createElement('div');d.style.cssText='position:fixed;bottom:20px;right:20px;background:#388e3c;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-family:sans-serif;';d.textContent='\\u2713 Tracked!';document.body.appendChild(d);setTimeout(function(){d.remove()},2500)})())`;
+      const bookmarkletCode = `javascript:void((function(){var loc=location.href;var isJira=loc.indexOf('atlassian.net/browse/')>-1||loc.indexOf('atlassian.net/jira/')>-1;var isCrdb=loc.indexOf('crdb3.amd.com')>-1;if(!isJira&&!isCrdb){alert('Not a CRDB or Jira page! Navigate to a CRDB simulation page or Jira ticket first.');return}if(isJira){var km=loc.match(/\\/browse\\/([A-Z][A-Z0-9]+-\\d+)/i)||loc.match(/\\/([A-Z][A-Z0-9]+-\\d+)/i);if(!km){alert('Could not extract Jira ticket key from URL.');return}var jk=km[1].toUpperCase();var q='?add=1&popup=1&source=jira&jirakey='+encodeURIComponent(jk);window.open('${encodeURI(trackerUrl)}'+q,'crdb-tracker-save','width=340,height=180,top=80,left='+(screen.width-400));var d=document.createElement('div');d.style.cssText='position:fixed;bottom:20px;right:20px;background:#1565c0;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-family:sans-serif;';d.textContent='\\u2713 Jira Tracked!';document.body.appendChild(d);setTimeout(function(){d.remove()},2500);return}var n='',b='',p='',bugs=[];try{var t=document.querySelector('h1,h2,.signature-name,[data-field=signature],.sim-name');if(t)n=t.textContent.trim();var tables=document.querySelectorAll('table');for(var ti=0;ti<tables.length;ti++){var hr=tables[ti].querySelector('thead tr,tr');if(!hr)continue;var ths=hr.querySelectorAll('th');var bc=-1;for(var h=0;h<ths.length;h++){if(ths[h].textContent.trim().toLowerCase().indexOf('bug')>-1){bc=h;break}}if(bc>-1){var brs=tables[ti].querySelectorAll('tbody tr');if(brs.length===0)brs=tables[ti].querySelectorAll('tr');for(var ri=0;ri<brs.length;ri++){var tds=brs[ri].querySelectorAll('td');if(tds.length>bc){var cv=tds[bc].textContent.trim();if(cv&&cv!=='-'&&cv!=='N/A'&&cv!=='None'){var ms=cv.match(/[A-Z][A-Z0-9]+-\\d+/gi);if(ms)for(var j=0;j<ms.length;j++){var uk=ms[j].toUpperCase();if(bugs.indexOf(uk)<0)bugs.push(uk)}}}}}}if(bugs.length===0){var rows=document.querySelectorAll('table tr');for(var r=0;r<rows.length;r++){var c=rows[r].querySelectorAll('td,th');for(var i=0;i<c.length-1;i++){var l=c[i].textContent.trim().toLowerCase();var v=c[i+1].textContent.trim();if(l.indexOf('bug')>-1&&(l.indexOf('no')>-1||l.indexOf('num')>-1||l.indexOf('id')>-1)){if(v&&v!=='-'&&v!=='N/A'&&v!=='None'){var jm=v.match(/([A-Z][A-Z0-9]+-\\d+)/i);if(jm&&bugs.indexOf(jm[1].toUpperCase())<0)bugs.push(jm[1].toUpperCase())}}if(l.indexOf('signature')>-1||l.indexOf('sig name')>-1)n=v;if(l.indexOf('project')>-1)p=v}}}if(bugs.length===0){var at=document.body.innerText||'';var bm=at.match(/Bug\\s*(?:No|Number|ID)[\\s:]*([A-Z]+-\\d+|\\d+)/i);if(bm)bugs.push(bm[1].toUpperCase())}b=bugs.join(',')}catch(e){}n=(n||document.title||'Unknown').replace(/\\s*:?\\s*Type\\s*\\(Click to clear sorting\\)/gi,'').trim();var q='?add=1&popup=1&source=crdb&url='+encodeURIComponent(location.href)+'&name='+encodeURIComponent(n)+'&bug='+encodeURIComponent(b)+'&project='+encodeURIComponent(p);window.open('${encodeURI(trackerUrl)}'+q,'crdb-tracker-save','width=340,height=180,top=80,left='+(screen.width-400));var d=document.createElement('div');d.style.cssText='position:fixed;bottom:20px;right:20px;background:#388e3c;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-family:sans-serif;';d.textContent='\\u2713 '+(bugs.length>0?'Updated!':'Tracked!');document.body.appendChild(d);setTimeout(function(){d.remove()},2500)})())`;
 
       const link = document.getElementById('bookmarklet-link');
       link.href = bookmarkletCode;
