@@ -382,6 +382,22 @@
       z-index: 1;
     }
 
+    .sig-table thead tr.filter-header-row th {
+      padding: 4px 4px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .th-filter-select {
+      width: 100%;
+      padding: 3px 4px;
+      font-size: 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      cursor: pointer;
+    }
+
     .sig-table tbody tr {
       background: var(--bg-card);
       transition: background 0.15s;
@@ -874,24 +890,6 @@
       <div class="filter-row">
         <select id="filter-week" onchange="renderSignatureList()" title="Filter by week">
           <option value="all">All Weeks</option>
-        </select>
-        <select id="filter-status">
-          <option value="all">All Signatures</option>
-          <option value="no-bug">No Bug Assigned</option>
-          <option value="has-bug">Bug Assigned</option>
-          <option value="resolved">Resolved</option>
-        </select>
-        <select id="filter-jira-status" onchange="renderSignatureList()" title="Filter by Jira status">
-          <option value="all">All Jira Status</option>
-          <option value="open">Open / In Progress</option>
-          <option value="impl">Implemented / Fixed</option>
-          <option value="rejected">Rejected / Won't Fix</option>
-          <option value="none">No Jira Status</option>
-        </select>
-        <select id="filter-debug-status" onchange="renderSignatureList()" title="Filter by debug status">
-          <option value="all">All Debug Status</option>
-          <option value="in-progress">In Progress</option>
-          <option value="debugged">Debugged</option>
         </select>
         <span id="sig-count" class="sig-count">0 tracked</span>
       </div>
@@ -1682,7 +1680,7 @@
     function setupEventListeners() {
       // Tracker Tab
       document.getElementById('btn-add-manual').addEventListener('click', addManual);
-      document.getElementById('filter-status').addEventListener('change', renderSignatureList);
+
 
       // Report Tab
       document.getElementById('btn-generate').addEventListener('click', generateReport);
@@ -1814,13 +1812,21 @@
       else dropdown.value = 'all';
     }
 
+    // Persisted filter state for in-table dropdowns
+    let _jiraFilterVal = 'all';
+    let _debugFilterVal = 'all';
+
     function renderSignatureList() {
       populateWeekDropdown();
       const container = document.getElementById('sig-list');
-      const filter = document.getElementById('filter-status').value;
       const weekFilter = document.getElementById('filter-week').value;
-      const jiraFilter = document.getElementById('filter-jira-status').value;
-      const debugFilter = document.getElementById('filter-debug-status').value;
+      // Read from DOM if exists (first render or external call), else use saved state
+      const jEl = document.getElementById('filter-jira-status');
+      const dEl = document.getElementById('filter-debug-status');
+      if (jEl) _jiraFilterVal = jEl.value;
+      if (dEl) _debugFilterVal = dEl.value;
+      const jiraFilter = _jiraFilterVal;
+      const debugFilter = _debugFilterVal;
 
       let filtered = signatures;
 
@@ -1835,11 +1841,6 @@
           return inWeek || carriedForward;
         });
       }
-
-      // Status filter
-      if (filter === 'no-bug') filtered = filtered.filter(s => s.status === 'no-bug');
-      else if (filter === 'has-bug') filtered = filtered.filter(s => s.status === 'has-bug');
-      else if (filter === 'resolved') filtered = filtered.filter(s => s.status === 'resolved');
 
       // Jira status filter
       if (jiraFilter !== 'all') {
@@ -1881,6 +1882,16 @@
           <th>Status Note</th>
           <th>Added</th>
           <th>Actions</th>
+        </tr><tr class="filter-header-row">
+          <th></th>
+          <th></th>
+          <th></th>
+          <th><select id="filter-jira-status" class="th-filter-select" onchange="renderSignatureList()" title="Filter by Jira status"><option value="all">All</option><option value="open">Open</option><option value="impl">Impl/Fixed</option><option value="rejected">Rejected</option><option value="none">No Status</option></select></th>
+          <th><select id="filter-debug-status" class="th-filter-select" onchange="renderSignatureList()" title="Filter by debug status"><option value="all">All</option><option value="in-progress">In Progress</option><option value="debugged">Debugged</option></select></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
         </tr></thead><tbody>`;
 
       html += filtered.map((sig, idx) => {
@@ -1955,6 +1966,12 @@
 
       html += '</tbody></table>';
       container.innerHTML = html;
+
+      // Restore filter dropdown selections after table rebuild
+      const jElNew = document.getElementById('filter-jira-status');
+      const dElNew = document.getElementById('filter-debug-status');
+      if (jElNew) jElNew.value = _jiraFilterVal;
+      if (dElNew) dElNew.value = _debugFilterVal;
 
       // Clear the just-added highlight after a few seconds
       if (justAddedId) {
