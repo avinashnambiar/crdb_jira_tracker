@@ -3370,7 +3370,7 @@
           const parsed = extractProjectAndUuid(sig.url);
 
           if (crdbToken && parsed) {
-            // Use CRDB REST API (returns JSON with bug_number field)
+            // Use CRDB REST API — simulation data has debug_records array with bug_number fields
             const apiUrl = `https://crdb3.amd.com/api/crdb/projects/${parsed.project}/simulations/${parsed.uuid}`;
             const proxyUrl = `/proxy?url=${encodeURIComponent(apiUrl)}`;
             const resp = await fetch(proxyUrl, {
@@ -3378,15 +3378,29 @@
             });
             if (resp.ok) {
               const data = await resp.json();
-              // The API may return the simulation object or an array
               const sim = Array.isArray(data) ? data[0] : data;
               if (sim) {
-                // Try common field names for bug number
-                const bugVal = sim.bug_number || sim.bugNumber || sim.bug_no || sim.jira_key || sim.jira_issue_key || sim.defect_id || '';
-                if (bugVal) {
-                  const jm = bugVal.match(/([A-Z][A-Z0-9]+-\d+)/i);
-                  if (jm) newBug = jm[1].toUpperCase();
-                  else if (/^\d+$/.test(bugVal.trim())) newBug = bugVal.trim();
+                // Bug numbers are in sim.debug_records[].bug_number
+                const debugRecords = sim.debug_records || [];
+                const bugNumbers = new Set();
+                for (const rec of debugRecords) {
+                  const bn = rec.bug_number || rec.jira_issue_key || '';
+                  if (bn && bn.trim() && bn.trim() !== '-' && bn.trim().toLowerCase() !== 'none') {
+                    // May be comma-separated (e.g. "DEPTRTVF-123,DEPTRTVF-456")
+                    for (const part of bn.split(',')) {
+                      const jm = part.trim().match(/([A-Z][A-Z0-9]+-\d+)/i);
+                      if (jm) bugNumbers.add(jm[1].toUpperCase());
+                    }
+                  }
+                }
+                // Also check top-level fields as fallback
+                const topBug = sim.bug_number || sim.jira_issue_key || '';
+                if (topBug) {
+                  const jm = topBug.match(/([A-Z][A-Z0-9]+-\d+)/i);
+                  if (jm) bugNumbers.add(jm[1].toUpperCase());
+                }
+                if (bugNumbers.size > 0) {
+                  newBug = [...bugNumbers].join(',');
                 }
               }
             }
@@ -3502,6 +3516,11 @@
     function sanitizeBugNo(raw) {
       if (!raw) return '';
       raw = raw.trim();
+      // Handle comma-separated bug numbers (e.g. "DEPTRTVF-123,DEPTRTVF-456")
+      if (raw.includes(',')) {
+        const parts = raw.split(',').map(p => sanitizeBugNo(p.trim())).filter(Boolean);
+        return parts.join(',');
+      }
       const match = raw.match(/([A-Z][A-Z0-9]+-\d+)/i);
       if (match) return match[1].toUpperCase();
       if (/^\d+$/.test(raw)) return raw;
