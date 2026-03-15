@@ -3370,37 +3370,40 @@
           const parsed = extractProjectAndUuid(sig.url);
 
           if (crdbToken && parsed) {
-            // Use CRDB REST API — simulation data has debug_records array with bug_number fields
-            const apiUrl = `https://crdb3.amd.com/api/crdb/projects/${parsed.project}/simulations/${parsed.uuid}`;
-            const proxyUrl = `/proxy?url=${encodeURIComponent(apiUrl)}`;
-            const resp = await fetch(proxyUrl, {
+            // Step 1: Fetch simulation to get the signature ID
+            const simApiUrl = `https://crdb3.amd.com/api/crdb/projects/${parsed.project}/simulations/${parsed.uuid}`;
+            const simResp = await fetch(`/proxy?url=${encodeURIComponent(simApiUrl)}`, {
               headers: { 'X-Crdb-Auth': crdbToken }
             });
-            if (resp.ok) {
-              const data = await resp.json();
-              const sim = Array.isArray(data) ? data[0] : data;
-              if (sim) {
-                // Bug numbers are in sim.debug_records[].bug_number
-                const debugRecords = sim.debug_records || [];
-                const bugNumbers = new Set();
-                for (const rec of debugRecords) {
-                  const bn = rec.bug_number || rec.jira_issue_key || '';
-                  if (bn && bn.trim() && bn.trim() !== '-' && bn.trim().toLowerCase() !== 'none') {
-                    // May be comma-separated (e.g. "DEPTRTVF-123,DEPTRTVF-456")
-                    for (const part of bn.split(',')) {
-                      const jm = part.trim().match(/([A-Z][A-Z0-9]+-\d+)/i);
-                      if (jm) bugNumbers.add(jm[1].toUpperCase());
+            if (simResp.ok) {
+              const simData = await simResp.json();
+              const simResults = simData.results || (Array.isArray(simData) ? simData : [simData]);
+              const simObj = simResults[0];
+              // The simulation response uses dotted keys like "sig.id"
+              const sigId = simObj && (simObj['sig.id'] || simObj.sig_id || (simObj.sig && simObj.sig.id));
+              
+              if (sigId) {
+                // Step 2: Fetch debug records for this signature
+                const drApiUrl = `https://crdb3.amd.com/api/crdb/projects/${parsed.project}/signatures/${sigId}/debug_records`;
+                const drResp = await fetch(`/proxy?url=${encodeURIComponent(drApiUrl)}`, {
+                  headers: { 'X-Crdb-Auth': crdbToken }
+                });
+                if (drResp.ok) {
+                  const drData = await drResp.json();
+                  const debugRecords = drData.results || (Array.isArray(drData) ? drData : []);
+                  const bugNumbers = new Set();
+                  for (const rec of debugRecords) {
+                    const bn = rec.bug_number || rec['bug_number'] || '';
+                    if (bn && bn.trim() && bn.trim() !== '-' && bn.trim().toLowerCase() !== 'none') {
+                      for (const part of bn.split(',')) {
+                        const jm = part.trim().match(/([A-Z][A-Z0-9]+-\d+)/i);
+                        if (jm) bugNumbers.add(jm[1].toUpperCase());
+                      }
                     }
                   }
-                }
-                // Also check top-level fields as fallback
-                const topBug = sim.bug_number || sim.jira_issue_key || '';
-                if (topBug) {
-                  const jm = topBug.match(/([A-Z][A-Z0-9]+-\d+)/i);
-                  if (jm) bugNumbers.add(jm[1].toUpperCase());
-                }
-                if (bugNumbers.size > 0) {
-                  newBug = [...bugNumbers].join(',');
+                  if (bugNumbers.size > 0) {
+                    newBug = [...bugNumbers].join(',');
+                  }
                 }
               }
             }
