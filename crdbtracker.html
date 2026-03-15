@@ -2654,7 +2654,8 @@
       const parts = weekOoo.map(d => {
         const display = formatShortDate(d);
         const holidayName = AMD_HOLIDAY_NAMES[d];
-        const reason = holidayName ? 'AMD Holiday' : 'OOO';
+        const isVacation = vacationDates.includes(d);
+        const reason = holidayName ? 'AMD Holiday' : isVacation ? 'Vacation' : 'OOO';
         return `${display} -${reason}`;
       });
       return `${weekOoo.length} ED (${parts.join(', ')})`;
@@ -2662,9 +2663,9 @@
 
     function formatVacationDatesForReport(reportDate) {
       if (vacationDates.length === 0) return '';
-      // Show all vacation dates from today onwards
-      const today = toLocalDateStr(new Date());
-      const upcoming = vacationDates.filter(d => d >= today);
+      // Show vacation dates AFTER the report week ends
+      const weekEnd = reportDate ? getWeekEnd(reportDate) : toLocalDateStr(new Date());
+      const upcoming = vacationDates.filter(d => d > weekEnd);
       if (upcoming.length === 0) return '';
       return upcoming.map(formatShortDate).join(', ');
     }
