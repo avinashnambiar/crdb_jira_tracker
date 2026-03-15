@@ -1490,20 +1490,21 @@
         vacationDates = rawVac ? JSON.parse(rawVac) : [];
       } catch (e) { vacationDates = []; }
 
-      // Auto-clean: remove OOO/vacation dates older than 3 weeks
+      // Auto-clean: remove past vacation dates, remove OOO dates older than 3 weeks
       try {
-        const cleanCutoff = (() => {
+        const today = toLocalDateStr(new Date());
+        const beforeCleanV = vacationDates.length;
+        vacationDates = vacationDates.filter(d => d >= today);
+        if (vacationDates.length !== beforeCleanV) saveVacationDates();
+
+        const oooCutoff = (() => {
           const curStart = getCurrentWeekStart();
           const d = new Date(curStart + 'T00:00:00');
           d.setDate(d.getDate() - 21);
           return toLocalDateStr(d);
         })();
-        const beforeCleanV = vacationDates.length;
-        vacationDates = vacationDates.filter(d => d >= cleanCutoff);
-        if (vacationDates.length !== beforeCleanV) saveVacationDates();
-
         const beforeCleanO = oooDates.length;
-        oooDates = oooDates.filter(d => d >= cleanCutoff);
+        oooDates = oooDates.filter(d => d >= oooCutoff);
         if (oooDates.length !== beforeCleanO) saveOooDates();
       } catch (e) {
         console.error('Error during date cleanup:', e);
@@ -2663,9 +2664,10 @@
 
     function formatVacationDatesForReport(reportDate) {
       if (vacationDates.length === 0) return '';
-      // Show vacation dates AFTER the report week ends
-      const weekEnd = reportDate ? getWeekEnd(reportDate) : toLocalDateStr(new Date());
-      const upcoming = vacationDates.filter(d => d > weekEnd);
+      // Show vacation dates AFTER the report week ends and still in the future
+      const today = toLocalDateStr(new Date());
+      const weekEnd = reportDate ? getWeekEnd(reportDate) : today;
+      const upcoming = vacationDates.filter(d => d > weekEnd && d >= today);
       if (upcoming.length === 0) return '';
       return upcoming.map(formatShortDate).join(', ');
     }
