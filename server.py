@@ -181,10 +181,20 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
 
                 if status_code >= 400:
                     self.send_response(status_code)
-                    self.send_header('Content-Type', 'application/json')
                     self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'error': f'HTTP {status_code}'}).encode())
+                    # Forward actual error body for API responses
+                    if is_crdb_api and html.strip():
+                        content_type_err = 'application/json' if html.strip().startswith(b'{') else 'text/plain'
+                        self.send_header('Content-Type', content_type_err)
+                        self.send_header('Content-Length', str(len(html)))
+                        self.end_headers()
+                        self.wfile.write(html)
+                    else:
+                        err_body = json.dumps({'error': f'HTTP {status_code}'}).encode()
+                        self.send_header('Content-Type', 'application/json')
+                        self.send_header('Content-Length', str(len(err_body)))
+                        self.end_headers()
+                        self.wfile.write(err_body)
                     return
 
                 # Detect content type — JSON for Jira/CRDB API, HTML otherwise

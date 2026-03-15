@@ -3298,16 +3298,23 @@
 
       if (!settings.crdbUsername || !settings.crdbPassword) return null;
 
-      const loginUrl = `/proxy?url=${encodeURIComponent('https://crdb3.amd.com/api/auth/login')}`;
+      const loginUrl = `/proxy?url=${encodeURIComponent('https://crdb3.amd.com/api/auth/token')}`;
+      const formBody = `username=${encodeURIComponent(settings.crdbUsername)}&password=${encodeURIComponent(settings.crdbPassword)}`;
       const resp = await fetch(loginUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
           'X-Crdb-Login': '1'  // Signal to proxy to forward as-is (no Kerberos)
         },
-        body: JSON.stringify({ username: settings.crdbUsername, password: settings.crdbPassword })
+        body: formBody
       });
-      if (!resp.ok) return null;
+      if (!resp.ok) {
+        let detail = `HTTP ${resp.status}`;
+        try { const err = await resp.json(); if (err.detail) detail = err.detail; } catch {}
+        console.warn('CRDB login failed:', detail);
+        showStatus(`CRDB login failed: ${detail}. Check credentials in Settings.`, 'error');
+        return null;
+      }
       const data = await resp.json();
       if (data && data.access_token) {
         _crdbToken = data.access_token;
