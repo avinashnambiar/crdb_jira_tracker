@@ -47,7 +47,7 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'X-Jira-Auth, X-Twiki-Auth, X-Crdb-Auth, X-Crdb-Login, Content-Type')
+        self.send_header('Access-Control-Allow-Headers', 'X-Jira-Auth, X-Twiki-Auth, Content-Type')
         self.send_header('Access-Control-Max-Age', '86400')
         self.send_header('Content-Length', '0')
         self.end_headers()
@@ -82,8 +82,6 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
         is_jira = 'amd.atlassian.net' in parsed.hostname
         is_crdb_api = 'crdb3.amd.com' in parsed.hostname and '/api/' in target_url
         twiki_auth = self.headers.get('X-Twiki-Auth', '') if is_twiki else ''
-        crdb_auth = self.headers.get('X-Crdb-Auth', '')  # Bearer token for CRDB API
-        crdb_login = self.headers.get('X-Crdb-Login', '')  # Flag for CRDB login POST
 
         try:
             # Use curl.exe for HTTP requests
@@ -114,17 +112,14 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
                     else:
                         curl_cmd.extend(['--negotiate', '-u', ':'])
                 elif is_crdb_api:
-                    # CRDB REST API — Accept JSON
+                    # CRDB REST API — Accept JSON, use Kerberos
                     curl_cmd.extend(['-H', 'Accept: application/json'])
-                    if crdb_auth:
-                        # Use Bearer token for authenticated API calls
-                        curl_cmd.extend(['-H', f'Authorization: Bearer {crdb_auth}'])
-                    # For login POST (X-Crdb-Login), no auth header needed — creds in body
+                    curl_cmd.extend(['--negotiate', '-u', ':'])
                 else:
                     curl_cmd.extend(['-H', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'])
 
                 if not is_jira and not is_crdb_api:
-                    # Auth for non-API targets (Jira and CRDB API auth is handled above)
+                    # Auth for non-API targets
                     if is_twiki and twiki_auth:
                         # TWiki uses Basic auth — credentials passed from browser
                         import base64
@@ -211,7 +206,7 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-Type', content_type)
                 self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Access-Control-Allow-Headers', 'X-Jira-Auth, X-Twiki-Auth, X-Crdb-Auth, X-Crdb-Login')
+                self.send_header('Access-Control-Allow-Headers', 'X-Jira-Auth, X-Twiki-Auth')
                 self.send_header('Content-Length', str(len(html)))
                 self.end_headers()
                 self.wfile.write(html)

@@ -1080,17 +1080,6 @@
         <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Week runs from the day after the previous report day through the report day. E.g. Monday → Tue–Mon.</p>
       </div>
       <hr />
-      <h4 style="margin-top:8px;">CRDB Login</h4>
-      <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Required for refreshing bug data from CRDB. Use the same credentials you use to log into <a href="https://crdb3.amd.com" target="_blank" style="color:var(--accent);">crdb3.amd.com</a>.</p>
-      <div class="form-group">
-        <label>CRDB Username</label>
-        <input type="text" id="setting-crdb-username" placeholder="e.g. amdusername" autocomplete="username" />
-      </div>
-      <div class="form-group">
-        <label>CRDB Password</label>
-        <input type="password" id="setting-crdb-password" placeholder="Your CRDB password" autocomplete="current-password" />
-      </div>
-      <hr />
       <h4 style="margin-top:8px;">Jira Integration</h4>
       <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Required for auto-fetching bug status. Generate a token at <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" style="color:var(--accent);">Atlassian API Tokens</a>.</p>
       <div class="form-group">
@@ -1255,9 +1244,7 @@
       engineerName: '',
       twikiBaseUrl: '',
       reportDay: 1, // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-      allocatedBandwidth: 100,
-      crdbUsername: '',
-      crdbPassword: ''
+      allocatedBandwidth: 100
     };
 
     const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -3077,8 +3064,6 @@
       document.getElementById('setting-eng-name').value = settings.engineerName || '';
       document.getElementById('setting-twiki-url').value = settings.twikiBaseUrl;
       document.getElementById('setting-report-day').value = settings.reportDay ?? 1;
-      document.getElementById('setting-crdb-username').value = settings.crdbUsername || '';
-      document.getElementById('setting-crdb-password').value = settings.crdbPassword || '';
       document.getElementById('setting-jira-email').value = settings.jiraEmail || '';
       document.getElementById('setting-jira-token').value = settings.jiraToken || '';
       document.getElementById('input-engineer-name').value = settings.fullName || '';
@@ -3093,8 +3078,6 @@
       settings.engineerName = document.getElementById('setting-eng-name').value.trim();
       settings.twikiBaseUrl = document.getElementById('setting-twiki-url').value.trim();
       settings.reportDay = parseInt(document.getElementById('setting-report-day').value) || 1;
-      settings.crdbUsername = document.getElementById('setting-crdb-username').value.trim();
-      settings.crdbPassword = document.getElementById('setting-crdb-password').value.trim();
       settings.jiraEmail = document.getElementById('setting-jira-email').value.trim();
       settings.jiraToken = document.getElementById('setting-jira-token').value.trim();
       saveSettings();
@@ -3360,41 +3343,7 @@
       setInterval(() => refreshSignatures(true), REFRESH_INTERVAL_MS);
     }
 
-    // ===== CRDB API Auth =====
-    let _crdbToken = null;
-    let _crdbTokenExpiry = 0;
-
-    async function getCrdbToken() {
-      // Reuse cached token if still valid (tokens last ~30 min, refresh at 25 min)
-      if (_crdbToken && Date.now() < _crdbTokenExpiry) return _crdbToken;
-
-      if (!settings.crdbUsername || !settings.crdbPassword) return null;
-
-      const loginUrl = `/proxy?url=${encodeURIComponent('https://crdb3.amd.com/api/auth/token')}`;
-      const formBody = `username=${encodeURIComponent(settings.crdbUsername)}&password=${encodeURIComponent(settings.crdbPassword)}`;
-      const resp = await fetch(loginUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'X-Crdb-Login': '1'  // Signal to proxy to forward as-is (no Kerberos)
-        },
-        body: formBody
-      });
-      if (!resp.ok) {
-        let detail = `HTTP ${resp.status}`;
-        try { const err = await resp.json(); if (err.detail) detail = err.detail; } catch {}
-        console.warn('CRDB login failed:', detail);
-        showStatus(`CRDB login failed: ${detail}. Check credentials in Settings.`, 'error');
-        return null;
-      }
-      const data = await resp.json();
-      if (data && data.access_token) {
-        _crdbToken = data.access_token;
-        _crdbTokenExpiry = Date.now() + 25 * 60 * 1000; // 25 min
-        return _crdbToken;
-      }
-      return null;
-    }
+    // ===== CRDB Refresh =====
 
     function extractProjectAndUuid(url) {
       // Extract project (e.g. "pt.a") and simulation UUID from CRDB URL
@@ -3419,17 +3368,6 @@
         progressEl.innerHTML = `Refreshing 0/${sigsWithUrl.length}...`;
       }
 
-      // Try to get CRDB API token
-      let crdbToken = null;
-      if (settings.crdbUsername && settings.crdbPassword) {
-        if (progressEl) progressEl.innerHTML = 'Authenticating to CRDB...';
-        try {
-          crdbToken = await getCrdbToken();
-        } catch (e) {
-          console.warn('CRDB auth failed:', e);
-        }
-      }
-
       let updated = 0, errors = 0, unchanged = 0;
       const results = [];
 
@@ -3441,31 +3379,7 @@
           let newBug = '';
           const parsed = extractProjectAndUuid(sig.url);
 
-          if (crdbToken && parsed) {
-            // Fetch simulation data and scan text fields for Jira ticket references
-            const simApiUrl = `https://crdb3.amd.com/api/crdb/projects/${parsed.project}/simulations/${parsed.uuid}`;
-            const simResp = await fetch(`/proxy?url=${encodeURIComponent(simApiUrl)}`, {
-              headers: { 'X-Crdb-Auth': crdbToken }
-            });
-            if (simResp.ok) {
-              const simData = await simResp.json();
-              const simObj = (simData.results || [simData])[0] || {};
-              // Check text fields that commonly contain bug references
-              const textParts = [];
-              for (const key of Object.keys(simObj)) {
-                const val = simObj[key];
-                if (typeof val === 'string' && val.length > 2) textParts.push(val);
-              }
-              const allText = textParts.join(' ');
-              const bugPatterns = allText.match(/[A-Z]{2,}[A-Z0-9]*-\d+/g);
-              if (bugPatterns) {
-                const uniqueBugs = [...new Set(bugPatterns.map(m => m.toUpperCase()))];
-                newBug = uniqueBugs.join(',');
-              }
-            }
-          }
-
-          // Fallback: try HTML parsing (works if CRDB ever returns server-rendered pages)
+          // Try HTML parsing (works if CRDB ever returns server-rendered pages)
           if (!newBug) {
             const proxyUrl = `/proxy?url=${encodeURIComponent(sig.url)}`;
             const resp = await fetch(proxyUrl);
