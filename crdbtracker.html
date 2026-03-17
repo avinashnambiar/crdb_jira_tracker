@@ -1404,6 +1404,7 @@
           existing.bugNo = cleanedBug;
           existing.status = 'has-bug';
           existing.debugStatus = 'debugged';
+          existing.debuggedDate = new Date().toISOString();
           existing.lastChecked = new Date().toISOString();
           if (name && name !== 'Unknown Signature' && name !== 'Unknown') existing.name = name;
           saveSignatures();
@@ -1428,6 +1429,7 @@
         bugType: 'RTL',
         statusNote: '',
         debugStatus: cleanedBug ? 'debugged' : 'in-progress',
+        debuggedDate: cleanedBug ? new Date().toISOString() : '',
         notes: '',
         dateAdded: new Date().toISOString(),
         lastChecked: new Date().toISOString(),
@@ -1520,6 +1522,7 @@
             if (cleaned !== sig.bugNo) { sig.bugNo = cleaned; needsSave = true; }
           }
           if (!sig.debugStatus) { sig.debugStatus = sig.bugNo ? 'debugged' : 'in-progress'; needsSave = true; }
+          if (sig.debuggedDate === undefined) { sig.debuggedDate = sig.debugStatus === 'debugged' ? (sig.lastChecked || sig.dateAdded) : ''; needsSave = true; }
           if (!sig.bugType) { sig.bugType = 'RTL'; needsSave = true; }
           if (sig.statusNote === undefined) { sig.statusNote = ''; needsSave = true; }
         });
@@ -1603,6 +1606,7 @@
         bugType: 'RTL',
         statusNote: '',
         debugStatus: cleanedBug ? 'debugged' : 'in-progress',
+        debuggedDate: cleanedBug ? new Date().toISOString() : '',
         notes: '',
         dateAdded: new Date().toISOString(),
         lastChecked: new Date().toISOString(),
@@ -1751,6 +1755,7 @@
         bugType: bugType,
         statusNote: statusNote,
         debugStatus: debugStatus || autoDebugStatus,
+        debuggedDate: (debugStatus || autoDebugStatus) === 'debugged' ? new Date().toISOString() : '',
         notes: notes,
         dateAdded: new Date().toISOString(),
         lastChecked: new Date().toISOString(),
@@ -1825,7 +1830,7 @@
           const addedDate = sig.dateAdded.slice(0, 10);
           // Show signatures added in this week OR carried forward into this week
           const inWeek = addedDate >= weekFilter && addedDate <= weekEnd;
-          const carriedForward = addedDate < weekFilter && sig.debugStatus !== 'debugged';
+          const carriedForward = isCarriedForward(sig, weekFilter);
           return inWeek || carriedForward;
         });
       }
@@ -2026,6 +2031,11 @@
       sig.bugNo = cleaned;
       sig.status = cleaned ? 'has-bug' : 'no-bug';
       sig.debugStatus = cleaned ? 'debugged' : 'in-progress';
+      if (cleaned) {
+        sig.debuggedDate = new Date().toISOString();
+      } else {
+        sig.debuggedDate = '';
+      }
       // Clear cached Jira status so it re-fetches
       sig.jiraStatus = '';
       sig.jiraStatusAt = 0;
@@ -2041,6 +2051,11 @@
       const sig = signatures.find(s => s.id === id);
       if (!sig) return;
       sig.debugStatus = value;
+      if (value === 'debugged') {
+        sig.debuggedDate = new Date().toISOString();
+      } else {
+        sig.debuggedDate = '';
+      }
       saveSignatures();
     }
 
@@ -3408,6 +3423,7 @@
             sig.bugNo = cleanedBug;
             sig.status = 'has-bug';
             sig.debugStatus = 'debugged';
+            sig.debuggedDate = new Date().toISOString();
             sig.lastChecked = new Date().toISOString();
             updated++;
             results.push({ name: sig.name, type: 'updated', detail: `${oldBug || 'none'} → ${cleanedBug}` });
@@ -3566,9 +3582,18 @@
     }
 
     // Check if a signature is carried forward (added before this week, still in-progress)
+    // Also returns true if the sig was debugged during this specific week
     function isCarriedForward(sig, weekStart) {
       const addedDate = sig.dateAdded.slice(0, 10);
-      return addedDate < weekStart && sig.debugStatus !== 'debugged';
+      if (addedDate >= weekStart) return false; // added in this week or later
+      if (sig.debugStatus !== 'debugged') return true; // still in-progress
+      // Debugged: show in the week it was debugged, not in later weeks
+      if (sig.debuggedDate) {
+        const debuggedDay = sig.debuggedDate.slice(0, 10);
+        const weekEnd = getWeekEnd(weekStart);
+        return debuggedDay >= weekStart && debuggedDay <= weekEnd;
+      }
+      return false;
     }
 
     // Get the current week's start date
