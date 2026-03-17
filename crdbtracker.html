@@ -2740,7 +2740,7 @@
       const debugged = sigs.filter(s => s.debugStatus === 'debugged');
       const inProgress = sigs.filter(s => s.debugStatus !== 'debugged');
 
-      const bugsWithId = sigs.filter(s => s.bugNo);
+      const bugsWithId = sigs.filter(s => s.bugNo && s.statusNote !== 'Known Issue, Same Signature');
       const rtlBugs = bugsWithId.filter(s => (s.bugType || 'RTL') === 'RTL').length;
       const verifBugs = bugsWithId.filter(s => (s.bugType || 'RTL') === 'Verif').length;
 
@@ -2796,7 +2796,7 @@
       const lines = [];
       const debugged = sigs.filter(s => s.debugStatus === 'debugged');
       const inProgress = sigs.filter(s => s.debugStatus !== 'debugged');
-      const bugsWithId = sigs.filter(s => s.bugNo);
+      const bugsWithId = sigs.filter(s => s.bugNo && s.statusNote !== 'Known Issue, Same Signature');
       const rtlBugs = bugsWithId.filter(s => (s.bugType || 'RTL') === 'RTL').length;
       const verifBugs = bugsWithId.filter(s => (s.bugType || 'RTL') === 'Verif').length;
 
