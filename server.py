@@ -18,6 +18,9 @@ PORT = 8091
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 
 
+DATA_FILE = os.path.join(DIRECTORY, 'crdb-data.json')
+
+
 class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
     """Serves static files and proxies /proxy?url=... requests to CRDB."""
 
@@ -25,7 +28,9 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
 
     def do_GET(self):
-        if self.path.startswith('/proxy?'):
+        if self.path == '/api/data':
+            self.handle_data_get()
+        elif self.path.startswith('/proxy?'):
             self.handle_proxy()
         else:
             super().do_GET()
@@ -37,10 +42,12 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_POST(self):
-        if self.path.startswith('/proxy?'):
+        if self.path == '/api/data':
+            self.handle_data_post()
+        elif self.path.startswith('/proxy?'):
             self.handle_proxy(method='POST')
         else:
-            self.send_error(405, 'POST only supported for /proxy')
+            self.send_error(405, 'POST only supported for /proxy and /api/data')
 
     def do_OPTIONS(self):
         """Handle CORS preflight requests for custom headers like X-Jira-Auth."""
@@ -51,6 +58,56 @@ class CRDBProxyHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Max-Age', '86400')
         self.send_header('Content-Length', '0')
         self.end_headers()
+
+    def handle_data_get(self):
+        """Return saved data from the shared JSON file."""
+        try:
+            if os.path.exists(DATA_FILE):
+                with open(DATA_FILE, 'r', encoding='utf-8') as f:
+                    data = f.read()
+            else:
+                data = '{}'
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Length', str(len(data.encode('utf-8'))))
+            self.end_headers()
+            self.wfile.write(data.encode('utf-8'))
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': str(e)}).encode())
+
+    def handle_data_post(self):
+        """Save data to the shared JSON file."""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length) if content_length > 0 else b''
+            # Validate it's valid JSON
+            json.loads(body)
+            with open(DATA_FILE, 'wb') as f:
+                f.write(body)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            resp = json.dumps({'ok': True}).encode()
+            self.send_header('Content-Length', str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+        except json.JSONDecodeError:
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Invalid JSON'}).encode())
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': str(e)}).encode())
 
     def handle_proxy(self, method='GET'):
         """Proxy a request to an external URL (for CRDB page fetching / TWiki save)."""

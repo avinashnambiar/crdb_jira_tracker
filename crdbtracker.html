@@ -539,9 +539,7 @@
       margin-top: 6px;
     }
 
-    .twiki-link { margin-bottom: 10px; font-size: 12px; }
-    .twiki-link a { color: var(--accent); text-decoration: none; }
-    .twiki-link a:hover { text-decoration: underline; }
+
 
     /* ===== Search Tab ===== */
     .search-result-card {
@@ -1001,12 +999,9 @@
         <div class="report-header-row">
           <h3>Generated Report</h3>
           <button id="btn-copy" class="btn btn-small">Copy</button>
-          <button id="btn-publish-twiki" class="btn btn-small" style="margin-left:8px;background:var(--success);color:var(--text-on-accent);" title="Publish report to TWiki page">&#9654; Publish to TWiki</button>
         </div>
-        <div id="twiki-link" class="twiki-link hidden"></div>
         <textarea id="report-output" readonly rows="14"></textarea>
         <div id="copy-status" class="copy-status hidden">Copied to clipboard!</div>
-        <div id="publish-status" class="copy-status hidden"></div>
       </div>
     </div>
 
@@ -1284,11 +1279,13 @@
     const JIRA_PAGE_SIZE = 15;
 
     // ===== Init =====
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
       // Apply theme from localStorage (update button icon)
       applyTheme(localStorage.getItem(STORAGE_THEME) || 'dark');
 
       loadData();
+      // Sync from server to pick up changes from other browsers
+      await syncFromServer();
 
       // If opened as popup by bookmarklet, show minimal save UI and auto-close
       if (isPopupMode()) {
@@ -1325,20 +1322,20 @@
       // Auto-refresh if last refresh was >12 hours ago
       scheduleAutoRefresh();
 
-      // Refresh data when user switches back to this tab (picks up popup saves)
+      // Refresh data when user switches back to this tab (picks up popup saves + other browser changes)
       // Invalidate Jira caches on focus so we get fresh data
       // NOTE: Do NOT reload OOO/vacation dates on focus — it interferes with the date picker
-      window.addEventListener('focus', () => {
+      window.addEventListener('focus', async () => {
         invalidateJiraCaches();
-        loadData(true);
+        await syncFromServer();
         renderSignatureList();
         renderJiraList();
         recalcEffectiveBandwidth();
       });
-      document.addEventListener('visibilitychange', () => {
+      document.addEventListener('visibilitychange', async () => {
         if (!document.hidden) {
           invalidateJiraCaches();
-          loadData(true);
+          await syncFromServer();
           renderSignatureList();
           renderJiraList();
           recalcEffectiveBandwidth();
@@ -1535,6 +1532,7 @@
     function saveSignatures() {
       try {
         localStorage.setItem(STORAGE_SIGS, JSON.stringify(signatures));
+        syncToServer();
       } catch (e) {
         console.error('Error saving signatures:', e);
         showStatus('Error saving data. localStorage may be full.', 'error');
@@ -1544,17 +1542,51 @@
     function saveSettings() {
       try {
         localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(settings));
+        syncToServer();
       } catch (e) {
         console.error('Error saving settings:', e);
       }
     }
 
     function saveOooDates() {
-      try { localStorage.setItem(STORAGE_OOO, JSON.stringify(oooDates)); } catch(e) {}
+      try { localStorage.setItem(STORAGE_OOO, JSON.stringify(oooDates)); syncToServer(); } catch(e) {}
     }
 
     function saveVacationDates() {
-      try { localStorage.setItem(STORAGE_VACATION, JSON.stringify(vacationDates)); } catch(e) {}
+      try { localStorage.setItem(STORAGE_VACATION, JSON.stringify(vacationDates)); syncToServer(); } catch(e) {}
+    }
+
+    // ===== Server Sync (cross-browser data sharing) =====
+    let _syncTimer = null;
+
+    function syncToServer() {
+      // Debounce: wait 500ms after last save before pushing to server
+      clearTimeout(_syncTimer);
+      _syncTimer = setTimeout(() => {
+        const data = { signatures, settings, oooDates, vacationDates, jiraTickets, savedAt: new Date().toISOString() };
+        fetch('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        }).catch(() => {}); // silent fail — localStorage still works as fallback
+      }, 500);
+    }
+
+    async function syncFromServer() {
+      try {
+        const resp = await fetch('/api/data');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data || !data.savedAt) return; // empty or no server data yet
+        // Update local state and localStorage from server
+        if (data.signatures) { signatures = data.signatures; localStorage.setItem(STORAGE_SIGS, JSON.stringify(signatures)); }
+        if (data.settings) { settings = { ...DEFAULT_SETTINGS, ...data.settings }; localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(settings)); }
+        if (data.oooDates) { oooDates = data.oooDates; localStorage.setItem(STORAGE_OOO, JSON.stringify(oooDates)); }
+        if (data.vacationDates) { vacationDates = data.vacationDates; localStorage.setItem(STORAGE_VACATION, JSON.stringify(vacationDates)); }
+        if (data.jiraTickets) { jiraTickets = data.jiraTickets; localStorage.setItem(STORAGE_JIRA_TICKETS, JSON.stringify(jiraTickets)); }
+      } catch (e) {
+        // Server unreachable — fall back to localStorage (already loaded)
+      }
     }
 
     // ===== Handle Incoming Bookmarklet Data =====
@@ -1677,7 +1709,6 @@
       // Report Tab
       document.getElementById('btn-generate').addEventListener('click', generateReport);
       document.getElementById('btn-copy').addEventListener('click', copyReport);
-      document.getElementById('btn-publish-twiki').addEventListener('click', publishToTWiki);
 
       // Search Tab
       document.getElementById('btn-search-twiki').addEventListener('click', searchTWiki);
@@ -2172,6 +2203,7 @@
 
     function saveJiraTickets() {
       localStorage.setItem(STORAGE_JIRA_TICKETS, JSON.stringify(jiraTickets));
+      syncToServer();
     }
 
     function extractJiraKey(input) {
@@ -2714,9 +2746,6 @@
         return;
       }
 
-      const dateStr = reportDayVal.replace(/-/g, '');
-      const twikiUrl = `${settings.twikiBaseUrl}${dateStr}`;
-
       let output = '';
 
       if (format === 'twiki') {
@@ -2728,9 +2757,6 @@
       document.getElementById('report-output').value = output;
       document.getElementById('report-output-container').classList.remove('hidden');
 
-      const twikiLinkEl = document.getElementById('twiki-link');
-      twikiLinkEl.innerHTML = `TWiki page: <a href="${twikiUrl}" target="_blank">${twikiUrl}</a>`;
-      twikiLinkEl.classList.remove('hidden');
     }
 
     function generateTWikiReport(sigs, engineer, bandwidth, allocated, ooo, vacation) {
@@ -2838,241 +2864,6 @@
       } catch (err) {
         document.getElementById('report-output').select();
         document.execCommand('copy');
-      }
-    }
-
-    // ===== Publish Report to TWiki =====
-    async function publishToTWiki() {
-      const reportText = document.getElementById('report-output').value.trim();
-      if (!reportText) {
-        showPublishStatus('No report generated. Generate the report first.', 'error');
-        return;
-      }
-
-      const format = document.getElementById('report-format').value;
-      if (format !== 'twiki') {
-        showPublishStatus('Publish requires TWiki format. Please change the format and regenerate.', 'warning');
-        return;
-      }
-
-      // Get engineer name early for the confirmation dialog
-      const engineerName = document.getElementById('input-engineer-name').value.trim() || settings.fullName || 'Engineer';
-
-      // Get TWiki credentials — reuse from Search tab or prompt
-      let authToken = getTwikiAuth();
-      if (!authToken) {
-        const user = prompt('TWiki Username (Windows username, no AMD\\ prefix):');
-        if (!user) return;
-        const pass = prompt('TWiki Password:');
-        if (!pass) return;
-        document.getElementById('twiki-username').value = user;
-        document.getElementById('twiki-password').value = pass;
-        authToken = getTwikiAuth();
-        if (!authToken) {
-          showPublishStatus('Invalid TWiki credentials.', 'error');
-          return;
-        }
-      }
-
-      // Build the TWiki page URL
-      const reportDayVal = document.getElementById('input-report-date').value;
-      if (!reportDayVal) {
-        showPublishStatus('Please select a report date first.', 'error');
-        return;
-      }
-      const dateStr = reportDayVal.replace(/-/g, '');
-      const baseUrl = settings.twikiBaseUrl || DEFAULT_SETTINGS.twikiBaseUrl;
-      const viewUrl = `${baseUrl}${dateStr}`;
-      const rawUrl = `${viewUrl}?raw=on`;
-      const saveUrl = viewUrl.replace('/bin/view/', '/bin/save/');
-
-      // Confirmation dialog — let the user know exactly what will happen
-      if (!confirm(
-        `Publish report for "${engineerName}" to TWiki?\n\n` +
-        `Page: ${viewUrl}\n\n` +
-        `• Only YOUR section will be updated.\n` +
-        `• Other engineers' sections will NOT be affected.\n` +
-        `• A safety check will verify all sections are preserved.`
-      )) {
-        return;
-      }
-
-      const publishBtn = document.getElementById('btn-publish-twiki');
-      const statusEl = document.getElementById('publish-status');
-      publishBtn.disabled = true;
-      publishBtn.textContent = '⏳ Publishing...';
-      statusEl.classList.add('hidden');
-
-      const MAX_RETRIES = 3;
-
-      try {
-        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-          if (attempt > 1) {
-            publishBtn.textContent = `⏳ Retry ${attempt}/${MAX_RETRIES}...`;
-          }
-
-          // ── Step 1: Fetch the LATEST raw page (fresh on every attempt) ──
-          const rawResp = await fetch(`/proxy?url=${encodeURIComponent(rawUrl)}`, {
-            headers: { 'X-Twiki-Auth': authToken }
-          });
-
-          if (rawResp.status === 401) {
-            _twikiAuthToken = '';
-            showPublishStatus('Authentication failed. Check your TWiki credentials.', 'error');
-            return;
-          }
-
-          let pageText = '';
-          if (rawResp.ok) {
-            pageText = await rawResp.text();
-            if (pageText.includes('TWikiRegistration') || pageText.includes('Authorization Required')) {
-              _twikiAuthToken = '';
-              showPublishStatus('Authentication failed. Re-enter your TWiki credentials.', 'error');
-              return;
-            }
-          }
-          // 404 → page doesn't exist yet, we'll create it
-
-          // ── Step 2: Catalog every existing section heading ──
-          const allSectionHeadings = pageText.match(/^---\+\+\+\+\s+.+$/gm) || [];
-          const otherSections = allSectionHeadings.filter(h =>
-            h.replace(/^---\+\+\+\+\s+/, '').trim() !== engineerName
-          );
-
-          // ── Step 3: Surgically replace ONLY this engineer's section ──
-          const headingRegex = new RegExp(
-            '^---\\+\\+\\+\\+\\s+' + engineerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$',
-            'm'
-          );
-
-          let newPageText;
-          const match = pageText.match(headingRegex);
-          if (match) {
-            // Found existing section — replace from heading to next ---++++ or EOF
-            const startIdx = match.index;
-            const afterHeading = pageText.substring(startIdx + match[0].length);
-            const nextHeadingMatch = afterHeading.match(/^---\+\+\+\+\s/m);
-
-            if (nextHeadingMatch) {
-              const endIdx = startIdx + match[0].length + nextHeadingMatch.index;
-              newPageText = pageText.substring(0, startIdx) + reportText + '\n\n' + pageText.substring(endIdx);
-            } else {
-              newPageText = pageText.substring(0, startIdx) + reportText + '\n';
-            }
-          } else {
-            // No existing section — append to end
-            newPageText = pageText ? (pageText.trimEnd() + '\n\n' + reportText + '\n') : (reportText + '\n');
-          }
-
-          // ── Step 4: Safety check — every other section must still be present ──
-          const newSectionHeadings = newPageText.match(/^---\+\+\+\+\s+.+$/gm) || [];
-          const missingSections = otherSections.filter(h => !newSectionHeadings.includes(h));
-          if (missingSections.length > 0) {
-            showPublishStatus(
-              `Safety abort: section(s) would be removed: ${missingSections.map(h => h.replace(/^---\+\+\+\+\s+/, '')).join(', ')}. No changes saved.`,
-              'error'
-            );
-            return;
-          }
-
-          // ── Step 5: POST to TWiki save endpoint ──
-          const formData = new URLSearchParams();
-          formData.append('text', newPageText);
-
-          const saveResp = await fetch(`/proxy?url=${encodeURIComponent(saveUrl)}`, {
-            method: 'POST',
-            headers: {
-              'X-Twiki-Auth': authToken,
-              'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: formData.toString()
-          });
-
-          if (saveResp.status === 401) {
-            _twikiAuthToken = '';
-            showPublishStatus('Authentication failed. Check your TWiki credentials.', 'error');
-            return;
-          }
-
-          if (!saveResp.ok) {
-            if (attempt < MAX_RETRIES) {
-              await new Promise(r => setTimeout(r, 1000 * attempt)); // exponential backoff
-              continue;
-            }
-            const errText = await saveResp.text();
-            showPublishStatus(`Publish failed (HTTP ${saveResp.status}). ${errText.substring(0, 120)}`, 'error');
-            return;
-          }
-
-          // ── Step 6: Post-save verification — re-fetch & confirm integrity ──
-          publishBtn.textContent = '⏳ Verifying...';
-          await new Promise(r => setTimeout(r, 1500)); // let TWiki commit
-
-          const verifyResp = await fetch(`/proxy?url=${encodeURIComponent(rawUrl)}`, {
-            headers: { 'X-Twiki-Auth': authToken }
-          });
-
-          if (verifyResp.ok) {
-            const verifyText = await verifyResp.text();
-            const verifyHeadings = verifyText.match(/^---\+\+\+\+\s+.+$/gm) || [];
-
-            // Is our section present?
-            const ourSectionPresent = verifyHeadings.some(h =>
-              h.replace(/^---\+\+\+\+\s+/, '').trim() === engineerName
-            );
-
-            // Are all other sections still intact?
-            const missingAfterSave = otherSections.filter(h => !verifyHeadings.includes(h));
-
-            if (!ourSectionPresent && attempt < MAX_RETRIES) {
-              // Our section vanished — someone else may have saved simultaneously. Retry.
-              await new Promise(r => setTimeout(r, 1000 * attempt));
-              continue;
-            }
-
-            if (missingAfterSave.length > 0) {
-              // Conflict detected — another user's section disappeared
-              if (attempt < MAX_RETRIES) {
-                await new Promise(r => setTimeout(r, 1000 * attempt));
-                continue; // retry with fresh content
-              }
-              showPublishStatus(
-                `⚠ Published, but section(s) may be affected: ${missingAfterSave.map(h => h.replace(/^---\+\+\+\+\s+/, '')).join(', ')}. Check the TWiki page manually.`,
-                'warning'
-              );
-              return;
-            }
-
-            if (!ourSectionPresent) {
-              showPublishStatus('⚠ Save returned OK but your section was not found. Check the TWiki page manually.', 'warning');
-              return;
-            }
-
-            // All good — our section is present and all other sections intact
-            const action = match ? 'updated' : 'added';
-            showPublishStatus(`✓ Published to TWiki — section ${action}. ${verifyHeadings.length} total section(s) verified intact.`, 'success');
-            return;
-          } else {
-            // Couldn't verify, but save succeeded
-            showPublishStatus('✓ Published to TWiki (verification skipped — save was successful).', 'success');
-            return;
-          }
-        }
-      } catch (err) {
-        showPublishStatus(`Publish error: ${err.message}`, 'error');
-      } finally {
-        publishBtn.disabled = false;
-        publishBtn.innerHTML = '&#9654; Publish to TWiki';
-      }
-    }
-
-    function showPublishStatus(message, type) {
-      const statusEl = document.getElementById('publish-status');
-      statusEl.textContent = message;
-      statusEl.style.color = type === 'success' ? 'var(--success)' : type === 'error' ? 'var(--danger)' : 'var(--warning)';
-      statusEl.classList.remove('hidden');
-      if (type === 'success') {
-        setTimeout(() => statusEl.classList.add('hidden'), 8000);
       }
     }
 
